@@ -1,0 +1,6 @@
+{
+  "name": "Demon Hunters: Breath of the Abyss",
+  "description": "2D anime side-view sword fighting game with hybrid ragdoll combat physics and Water Breathing techniques in a moonlit bamboo forest.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
