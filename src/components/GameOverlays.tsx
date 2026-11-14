@@ -2,7 +2,6 @@ import {
   ArrowRight,
   BookOpen,
   Coins,
-  Film,
   Home,
   Map,
   Play,
@@ -13,7 +12,7 @@ import {
   Users,
 } from 'lucide-react';
 import { BREATHING_STYLES } from '../game/breathing';
-import { getRouteLevelBriefing, getLevelById } from '../game/campaign';
+import { getCharacterCampaignInfo } from '../game/campaign';
 import { getCharacterById, SLAYER_CHARACTERS } from '../game/characters';
 import { HudSnapshot, SaveData } from '../game/types';
 
@@ -26,7 +25,6 @@ interface GameOverlaysProps {
   onOpenShop: () => void;
   onStartTutorial: () => void;
   onOpenEncyclopedia: () => void;
-  onOpenStoryGallery: () => void;
   onOpenSettings: () => void;
   onQuickPlayStory: () => void;
   onResume: () => void;
@@ -44,7 +42,6 @@ export function GameOverlays({
   onOpenShop,
   onStartTutorial,
   onOpenEncyclopedia,
-  onOpenStoryGallery,
   onOpenSettings,
   onQuickPlayStory,
   onResume,
@@ -56,10 +53,7 @@ export function GameOverlays({
 
   const activeChar = getCharacterById(save.selectedCharacterId);
   const activeStyle = BREATHING_STYLES[save.selectedBreathing];
-  const activeRoute = getRouteLevelBriefing(
-    getLevelById(save.highestUnlockedLevel),
-    activeChar.routeId
-  );
+  const campaignInfo = getCharacterCampaignInfo(activeChar.id);
 
   if (hud.phase === 'TITLE_MENU') {
     return (
@@ -100,21 +94,21 @@ export function GameOverlays({
           Breath of the Abyss
         </p>
 
-        {/* Active Slayer, Route & Progression Readout */}
+        {/* Active Slayer, Individual Campaign & Progression Readout */}
         <div className="mt-3.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-slate-300">
           <span className="font-semibold text-white">{activeChar.name}</span>
           <span className="text-slate-600" aria-hidden="true">·</span>
           <span style={{ color: activeStyle.primaryColor }}>{activeStyle.name}</span>
           <span className="text-slate-600" aria-hidden="true">·</span>
-          <span className="text-slate-300">{activeRoute.routeLabel}</span>
+          <span className="text-sky-200">{campaignInfo.campaignTitle}</span>
           <span className="text-slate-600" aria-hidden="true">·</span>
           <span className="font-mono-num flex items-center gap-1 font-bold text-amber-300">
             <Coins className="h-3.5 w-3.5" />
             {save.coins} Coins
           </span>
           <span className="text-slate-600" aria-hidden="true">·</span>
-          <span className="font-mono-num text-slate-300">
-            Story Lv.{save.highestUnlockedLevel}/50
+          <span className="font-mono-num text-emerald-300">
+            Lv.{save.highestUnlockedLevel}/50
           </span>
         </div>
 
@@ -123,12 +117,12 @@ export function GameOverlays({
           <button
             type="button"
             onClick={onContinueGame}
-            className="flex items-center justify-center gap-2 rounded-lg bg-sky-500 px-5 py-3.5 text-sm font-bold text-slate-950 shadow-lg transition-colors hover:bg-sky-400 active:scale-98"
+            className="flex min-h-[48px] items-center justify-center gap-2 rounded-lg bg-sky-500 px-5 py-3.5 text-sm font-bold text-slate-950 shadow-lg transition-colors hover:bg-sky-400 active:scale-98"
           >
             <Play className="h-4 w-4 fill-current" />
             <span>
               {save.tutorialCompleted
-                ? `Continue Game (Lv.${save.highestUnlockedLevel})`
+                ? `Continue Campaign (Lv.${save.highestUnlockedLevel})`
                 : 'Continue Game · Start Trial'}
             </span>
           </button>
@@ -136,16 +130,16 @@ export function GameOverlays({
           <button
             type="button"
             onClick={onOpenCampaign}
-            className="flex items-center justify-center gap-2 rounded-lg border border-sky-500/50 bg-slate-900/90 px-5 py-3.5 text-sm font-bold text-sky-200 transition-colors hover:border-sky-400 hover:bg-slate-800"
+            className="flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-sky-500/50 bg-slate-900/90 px-5 py-3.5 text-sm font-bold text-sky-200 transition-colors hover:border-sky-400 hover:bg-slate-800"
           >
             <Map className="h-4 w-4 text-sky-300" />
-            <span>Story Mode (50 Levels)</span>
+            <span>Story Campaign (50 Levels)</span>
           </button>
 
           <button
             type="button"
             onClick={onOpenCharSelect}
-            className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm font-semibold text-slate-100 transition-colors hover:border-sky-400 hover:bg-slate-800"
+            className="flex min-h-[46px] items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/90 px-4 py-3 text-sm font-semibold text-slate-100 transition-colors hover:border-sky-400 hover:bg-slate-800"
           >
             <Users className="h-4 w-4 text-emerald-300" />
             <span>Character Selection</span>
@@ -154,21 +148,21 @@ export function GameOverlays({
           <button
             type="button"
             onClick={onOpenShop}
-            className="flex items-center justify-center gap-2 rounded-lg border border-amber-500/45 bg-slate-900/90 px-4 py-3 text-sm font-semibold text-amber-200 transition-colors hover:border-amber-400 hover:bg-slate-800"
+            className="flex min-h-[46px] items-center justify-center gap-2 rounded-lg border border-amber-500/45 bg-slate-900/90 px-4 py-3 text-sm font-semibold text-amber-200 transition-colors hover:border-amber-400 hover:bg-slate-800"
           >
             <ShoppingBag className="h-4 w-4 text-amber-300" />
             <span>
-              Character Collection / Shop ({save.unlockedCharacters.length}/{SLAYER_CHARACTERS.length})
+              Roster, Upgrades & Shop ({save.unlockedCharacters.length}/{SLAYER_CHARACTERS.length})
             </span>
           </button>
         </div>
 
-        {/* Secondary Navigation Row */}
-        <div className="mt-2.5 grid w-full max-w-2xl grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {/* Secondary Navigation Row (No separate Cutscene menu button; cutscenes trigger in campaigns) */}
+        <div className="mt-2.5 grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-3">
           <button
             type="button"
             onClick={onStartTutorial}
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-700/90 bg-slate-950/85 px-3 py-2.5 text-xs font-semibold text-slate-200 transition-colors hover:border-sky-400 hover:bg-slate-900"
+            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-slate-700/90 bg-slate-950/85 px-3 py-2.5 text-xs font-semibold text-slate-200 transition-colors hover:border-sky-400 hover:bg-slate-900"
           >
             <Sparkles className="h-4 w-4 text-sky-300" />
             <span>Boulder Trial</span>
@@ -177,7 +171,7 @@ export function GameOverlays({
           <button
             type="button"
             onClick={onOpenEncyclopedia}
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-rose-500/40 bg-slate-950/85 px-3 py-2.5 text-xs font-semibold text-rose-200 transition-colors hover:border-rose-400 hover:bg-slate-900"
+            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-rose-500/40 bg-slate-950/85 px-3 py-2.5 text-xs font-semibold text-rose-200 transition-colors hover:border-rose-400 hover:bg-slate-900"
           >
             <BookOpen className="h-4 w-4 text-rose-400" />
             <span>Encyclopedia (60)</span>
@@ -185,17 +179,8 @@ export function GameOverlays({
 
           <button
             type="button"
-            onClick={onOpenStoryGallery}
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-sky-500/40 bg-slate-950/85 px-3 py-2.5 text-xs font-semibold text-sky-200 transition-colors hover:border-sky-400 hover:bg-slate-900"
-          >
-            <Film className="h-4 w-4 text-sky-400" />
-            <span>Story Gallery</span>
-          </button>
-
-          <button
-            type="button"
             onClick={onOpenSettings}
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-700/90 bg-slate-950/85 px-3 py-2.5 text-xs font-semibold text-slate-200 transition-colors hover:border-slate-500 hover:bg-slate-900"
+            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-slate-700/90 bg-slate-950/85 px-3 py-2.5 text-xs font-semibold text-slate-200 transition-colors hover:border-slate-500 hover:bg-slate-900"
           >
             <Settings className="h-4 w-4 text-slate-300" />
             <span>Settings</span>

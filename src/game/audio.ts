@@ -1,142 +1,259 @@
-import { AudioSettings, BreathingStyleId, DemonSfxTheme, MapId } from './types';
+import { AudioSettings, BreathingStyleId, DemonArchetype, DemonSfxTheme, MapId } from './types';
+
+export type MusicContextMode = 'menu' | 'char_select' | 'cutscene' | 'gameplay';
 
 interface MapMusicSpec {
   bpm: number;
-  scale: number[]; // Frequencies in Hz (Japanese pentatonic & modal themes)
-  pattern: number[]; // Indices into scale (-1 = rest)
-  bassPattern: number[];
+  scale: number[]; // Frequencies in Hz (Japanese Hirajoshi, Yo, Iwato, In-sen modal scales)
+  pattern: number[]; // 16-step melodic motif (-1 = rest)
+  kotoArp: number[]; // 16-step secondary plucked koto counterpoint (-1 = rest)
+  bassPattern: number[]; // 16-step bass drone pattern
   leadWave: OscillatorType;
   subBassFreq: number;
   taikoPulse: boolean;
+  padChord: number[]; // Scale indices for sustained atmospheric pad
 }
 
-// Original Japanese-inspired pentatonic motifs per arena
-const MAP_MUSIC_THEMES: Record<MapId | 'menu' | 'char_select' | 'final_boss', MapMusicSpec> = {
+const CHARACTER_MOTIF_SHIFT: Record<string, number> = {
+  tanjiro: 1.0,
+  zenitsu: 1.06,
+  inosuke: 0.94,
+  kanao: 1.12,
+  genya: 0.89,
+  nezuko_ally: 1.03,
+  giyu: 0.92,
+  rengoku: 1.05,
+  tengen: 1.09,
+  shinobu: 1.15,
+  mitsuri: 1.1,
+  muichiro: 0.97,
+  obanai: 0.95,
+  sanemi: 0.9,
+  gyomei: 0.84,
+};
+
+type ThemeKey =
+  | MapId
+  | 'menu'
+  | 'char_select'
+  | 'cutscene'
+  | 'boss_akaza'
+  | 'boss_doma'
+  | 'boss_kokushibo'
+  | 'boss_gyutaro'
+  | 'final_boss';
+
+const MAP_MUSIC_THEMES: Record<ThemeKey, MapMusicSpec> = {
   menu: {
-    bpm: 78,
-    scale: [220, 233.08, 293.66, 329.63, 349.23, 440, 466.16, 587.33],
-    pattern: [0, 2, 3, 5, 4, 3, 2, 1],
-    bassPattern: [0, -1, 0, -1, 2, -1, 1, -1],
+    bpm: 76,
+    // Hirajoshi melancholic heroic theme
+    scale: [220, 246.94, 261.63, 329.63, 349.23, 440, 493.88, 523.25],
+    pattern: [0, 3, 5, 4, 3, 2, 1, -1, 0, 4, 5, 7, 5, 4, 3, -1],
+    kotoArp: [0, -1, 3, 5, -1, 4, 2, -1, 0, -1, 4, 5, -1, 3, 1, -1],
+    bassPattern: [0, -1, -1, -1, 3, -1, -1, -1, 2, -1, -1, -1, 1, -1, 0, -1],
     leadWave: 'triangle',
     subBassFreq: 110,
     taikoPulse: false,
+    padChord: [0, 3, 5],
   },
   char_select: {
-    bpm: 92,
+    bpm: 94,
     scale: [246.94, 293.66, 329.63, 369.99, 440, 493.88, 587.33, 659.25],
-    pattern: [0, 2, 4, 5, 6, 5, 4, 2],
-    bassPattern: [0, -1, 2, -1, 3, -1, 2, -1],
+    pattern: [0, 2, 4, 5, 6, 5, 4, 2, 0, 3, 4, 6, 5, 4, 2, 1],
+    kotoArp: [0, 4, -1, 5, 2, -1, 4, 0, 1, 5, -1, 6, 3, -1, 4, 2],
+    bassPattern: [0, -1, 2, -1, 3, -1, 2, -1, 0, -1, 3, -1, 4, -1, 2, -1],
     leadWave: 'triangle',
     subBassFreq: 123.47,
     taikoPulse: true,
+    padChord: [0, 2, 4],
+  },
+  cutscene: {
+    bpm: 70,
+    // Emotional Japanese flute & koto storytelling motif
+    scale: [220, 246.94, 293.66, 329.63, 392.0, 440, 493.88, 587.33],
+    pattern: [5, -1, 4, 3, 2, -1, 3, 4, 5, -1, 6, 5, 4, 3, 2, 0],
+    kotoArp: [0, 2, 3, 5, -1, 4, 3, 2, 0, 3, 4, 6, -1, 5, 3, 1],
+    bassPattern: [0, -1, -1, -1, 2, -1, -1, -1, 3, -1, -1, -1, 1, -1, -1, -1],
+    leadWave: 'sine',
+    subBassFreq: 110,
+    taikoPulse: false,
+    padChord: [0, 3, 4],
   },
   bamboo_forest: {
-    bpm: 96,
+    bpm: 98,
     scale: [220, 233.08, 293.66, 329.63, 392.0, 440, 466.16, 587.33],
-    pattern: [0, 1, 3, 5, 4, 3, 1, 0],
-    bassPattern: [0, -1, 2, -1, 0, -1, 1, -1],
+    pattern: [0, 1, 3, 5, 4, 3, 1, 0, 2, 3, 5, 6, 5, 4, 3, 1],
+    kotoArp: [0, -1, 3, -1, 4, -1, 1, -1, 2, -1, 5, -1, 4, -1, 2, -1],
+    bassPattern: [0, -1, 2, -1, 0, -1, 1, -1, 0, -1, 3, -1, 2, -1, 1, -1],
     leadWave: 'triangle',
     subBassFreq: 110,
     taikoPulse: true,
+    padChord: [0, 2, 5],
   },
   mountain_training: {
-    bpm: 108,
+    bpm: 110,
     scale: [246.94, 277.18, 329.63, 369.99, 440, 493.88, 554.37, 659.25],
-    pattern: [0, 2, 3, 4, 5, 4, 3, 2],
-    bassPattern: [0, 0, 2, -1, 3, 3, 2, -1],
+    pattern: [0, 2, 3, 4, 5, 4, 3, 2, 0, 3, 5, 6, 5, 4, 3, 0],
+    kotoArp: [0, 3, 4, 0, 2, 4, 5, 2, 0, 3, 5, 7, 5, 3, 2, 0],
+    bassPattern: [0, 0, 2, -1, 3, 3, 2, -1, 0, 0, 3, -1, 4, 2, 1, -1],
     leadWave: 'triangle',
     subBassFreq: 123.47,
     taikoPulse: true,
+    padChord: [0, 2, 4],
   },
   snowy_mountain: {
     bpm: 88,
     scale: [261.63, 293.66, 311.13, 392.0, 415.3, 523.25, 587.33, 622.25],
-    pattern: [5, 3, 2, 0, 3, 4, 2, 1],
-    bassPattern: [0, -1, -1, 3, 0, -1, 2, -1],
+    pattern: [5, 3, 2, 0, 3, 4, 2, 1, 5, 6, 5, 3, 4, 2, 1, 0],
+    kotoArp: [0, 3, 5, -1, 2, 4, 6, -1, 0, 3, 5, -1, 1, 4, 2, -1],
+    bassPattern: [0, -1, -1, 3, 0, -1, 2, -1, 0, -1, -1, 4, 2, -1, 1, -1],
     leadWave: 'sine',
     subBassFreq: 130.81,
     taikoPulse: false,
+    padChord: [0, 2, 3],
   },
   japanese_village: {
-    bpm: 114,
+    bpm: 116,
     scale: [246.94, 261.63, 329.63, 369.99, 392.0, 493.88, 523.25, 659.25],
-    pattern: [0, 3, 2, 4, 5, 4, 3, 1],
-    bassPattern: [0, -1, 0, 2, 0, -1, 3, 1],
+    pattern: [0, 3, 2, 4, 5, 4, 3, 1, 0, 4, 5, 6, 5, 3, 2, 0],
+    kotoArp: [0, 2, 4, 5, 3, 5, 4, 2, 0, 3, 5, 7, 5, 4, 2, 1],
+    bassPattern: [0, -1, 0, 2, 0, -1, 3, 1, 0, -1, 2, 3, 4, -1, 2, 1],
     leadWave: 'triangle',
     subBassFreq: 123.47,
     taikoPulse: true,
+    padChord: [0, 2, 4],
   },
   dark_forest: {
-    bpm: 104,
+    bpm: 106,
     scale: [196.0, 207.65, 261.63, 293.66, 311.13, 392.0, 415.3, 523.25],
-    pattern: [0, 1, 4, 3, 2, 1, 0, -1],
-    bassPattern: [0, 0, -1, 1, 0, 0, -1, 2],
+    pattern: [0, 1, 4, 3, 2, 1, 0, -1, 0, 4, 5, 6, 4, 3, 1, -1],
+    kotoArp: [0, -1, 1, 4, -1, 3, 2, -1, 0, -1, 4, 6, -1, 3, 1, 0],
+    bassPattern: [0, 0, -1, 1, 0, 0, -1, 2, 0, 0, -1, 3, 2, 1, 0, -1],
     leadWave: 'sawtooth',
     subBassFreq: 98.0,
     taikoPulse: true,
+    padChord: [0, 1, 4],
   },
   abandoned_temple: {
-    bpm: 100,
+    bpm: 102,
     scale: [220, 246.94, 261.63, 329.63, 349.23, 440, 493.88, 523.25],
-    pattern: [0, 4, 3, 1, 2, 5, 4, 3],
-    bassPattern: [0, -1, 3, -1, 0, -1, 1, -1],
+    pattern: [0, 4, 3, 1, 2, 5, 4, 3, 0, 5, 6, 4, 3, 2, 1, 0],
+    kotoArp: [0, 3, 4, 5, 1, 3, 4, 2, 0, 4, 5, 7, 4, 3, 2, 1],
+    bassPattern: [0, -1, 3, -1, 0, -1, 1, -1, 0, -1, 4, -1, 2, -1, 1, -1],
     leadWave: 'triangle',
     subBassFreq: 110,
     taikoPulse: true,
+    padChord: [0, 2, 3],
   },
   spider_mountain: {
-    bpm: 122,
+    bpm: 124,
     scale: [207.65, 220, 277.18, 311.13, 329.63, 415.3, 440, 554.37],
-    pattern: [0, 5, 4, 2, 3, 4, 1, 0],
-    bassPattern: [0, 0, 2, 0, 3, 0, 1, 0],
+    pattern: [0, 5, 4, 2, 3, 4, 1, 0, 0, 6, 5, 3, 4, 2, 1, 0],
+    kotoArp: [0, 3, 5, 3, 2, 4, 5, 2, 0, 4, 6, 4, 3, 1, 2, 0],
+    bassPattern: [0, 0, 2, 0, 3, 0, 1, 0, 0, 0, 4, 0, 3, 2, 1, 0],
     leadWave: 'sawtooth',
     subBassFreq: 103.83,
     taikoPulse: true,
+    padChord: [0, 1, 3],
   },
   entertainment_district: {
-    bpm: 130,
+    bpm: 132,
     scale: [261.63, 277.18, 349.23, 392.0, 466.16, 523.25, 554.37, 698.46],
-    pattern: [0, 3, 5, 4, 3, 2, 1, 3],
-    bassPattern: [0, 3, 0, 3, 1, 4, 2, 3],
+    pattern: [0, 3, 5, 4, 3, 2, 1, 3, 0, 5, 6, 7, 5, 4, 3, 1],
+    kotoArp: [0, 3, 4, 5, 2, 4, 6, 4, 0, 3, 5, 7, 4, 3, 2, 1],
+    bassPattern: [0, 3, 0, 3, 1, 4, 2, 3, 0, 3, 0, 4, 2, 3, 1, 2],
     leadWave: 'sawtooth',
     subBassFreq: 130.81,
     taikoPulse: true,
+    padChord: [0, 3, 4],
   },
   swordsmith_village: {
-    bpm: 126,
+    bpm: 128,
     scale: [246.94, 293.66, 329.63, 369.99, 440, 493.88, 587.33, 659.25],
-    pattern: [0, 2, 4, 5, 4, 3, 2, 1],
-    bassPattern: [0, 0, 3, 3, 2, 2, 4, 3],
+    pattern: [0, 2, 4, 5, 4, 3, 2, 1, 0, 4, 5, 7, 6, 5, 4, 2],
+    kotoArp: [0, 2, 5, 2, 3, 4, 6, 4, 0, 3, 5, 7, 4, 2, 3, 1],
+    bassPattern: [0, 0, 3, 3, 2, 2, 4, 3, 0, 0, 4, 4, 3, 2, 1, 0],
     leadWave: 'triangle',
     subBassFreq: 123.47,
     taikoPulse: true,
+    padChord: [0, 2, 4],
   },
   hashira_grounds: {
-    bpm: 134,
+    bpm: 136,
     scale: [293.66, 329.63, 392.0, 440, 523.25, 587.33, 659.25, 783.99],
-    pattern: [0, 3, 4, 5, 6, 5, 4, 2],
-    bassPattern: [0, 0, 2, 0, 3, 3, 4, 2],
+    pattern: [0, 3, 4, 5, 6, 5, 4, 2, 0, 4, 5, 7, 6, 5, 3, 2],
+    kotoArp: [0, 2, 4, 5, 3, 5, 6, 4, 0, 3, 5, 7, 4, 5, 3, 2],
+    bassPattern: [0, 0, 2, 0, 3, 3, 4, 2, 0, 0, 3, 0, 4, 3, 2, 1],
     leadWave: 'triangle',
     subBassFreq: 146.83,
     taikoPulse: true,
+    padChord: [0, 2, 5],
   },
   infinity_castle: {
-    bpm: 142,
+    bpm: 144,
     scale: [196.0, 207.65, 246.94, 293.66, 311.13, 392.0, 415.3, 493.88],
-    pattern: [0, 3, 4, 6, 5, 4, 3, 1],
-    bassPattern: [0, 0, 3, 0, 4, 0, 1, 2],
+    pattern: [0, 3, 4, 6, 5, 4, 3, 1, 0, 4, 5, 7, 6, 4, 2, 1],
+    kotoArp: [0, 2, 4, 6, 3, 5, 7, 4, 0, 1, 4, 5, 2, 3, 6, 1],
+    bassPattern: [0, 0, 3, 0, 4, 0, 1, 2, 0, 0, 3, 4, 5, 3, 2, 1],
     leadWave: 'sawtooth',
     subBassFreq: 98.0,
     taikoPulse: true,
+    padChord: [0, 1, 4],
   },
-  final_boss: {
-    bpm: 156,
-    scale: [220, 233.08, 277.18, 329.63, 349.23, 440, 466.16, 554.37],
-    pattern: [0, 5, 4, 3, 6, 5, 4, 1],
-    bassPattern: [0, 0, 3, 0, 4, 4, 1, 2],
+  boss_akaza: {
+    bpm: 150,
+    scale: [220, 233.08, 293.66, 329.63, 349.23, 440, 466.16, 587.33],
+    pattern: [0, 4, 5, 3, 6, 5, 4, 1, 0, 5, 7, 6, 5, 4, 2, 1],
+    kotoArp: [0, 2, 3, 5, 1, 3, 4, 6, 0, 3, 5, 7, 4, 3, 2, 1],
+    bassPattern: [0, 0, 3, 0, 4, 3, 1, 0, 0, 0, 4, 0, 5, 3, 2, 1],
     leadWave: 'sawtooth',
     subBassFreq: 110,
     taikoPulse: true,
+    padChord: [0, 1, 4],
+  },
+  boss_doma: {
+    bpm: 138,
+    scale: [261.63, 277.18, 329.63, 392.0, 415.3, 523.25, 554.37, 659.25],
+    pattern: [7, 5, 4, 3, 5, 6, 4, 1, 7, 6, 4, 2, 5, 4, 3, 0],
+    kotoArp: [3, 5, 7, 5, 4, 6, 7, 4, 2, 5, 6, 4, 3, 5, 4, 1],
+    bassPattern: [0, 0, 3, -1, 4, 2, 1, 0, 0, 0, 4, -1, 5, 3, 2, 1],
+    leadWave: 'triangle',
+    subBassFreq: 130.81,
+    taikoPulse: true,
+    padChord: [0, 2, 5],
+  },
+  boss_kokushibo: {
+    bpm: 146,
+    scale: [196.0, 207.65, 261.63, 293.66, 329.63, 392.0, 415.3, 523.25],
+    pattern: [0, 5, 4, 3, 7, 5, 4, 2, 0, 6, 5, 3, 4, 2, 1, 0],
+    kotoArp: [0, 3, 5, 7, 4, 2, 5, 3, 0, 4, 6, 7, 5, 3, 1, 0],
+    bassPattern: [0, 0, 4, 0, 3, 0, 1, 0, 0, 0, 5, 0, 4, 3, 2, 1],
+    leadWave: 'sawtooth',
+    subBassFreq: 98.0,
+    taikoPulse: true,
+    padChord: [0, 1, 3],
+  },
+  boss_gyutaro: {
+    bpm: 148,
+    scale: [233.08, 246.94, 311.13, 349.23, 392.0, 466.16, 493.88, 622.25],
+    pattern: [0, 1, 4, 5, 4, 3, 1, 0, 2, 4, 6, 5, 4, 3, 2, 1],
+    kotoArp: [0, 3, 4, 1, 2, 5, 4, 2, 0, 3, 6, 4, 5, 3, 1, 0],
+    bassPattern: [0, 3, 0, 4, 1, 3, 2, 0, 0, 4, 0, 5, 2, 4, 1, 2],
+    leadWave: 'sawtooth',
+    subBassFreq: 116.54,
+    taikoPulse: true,
+    padChord: [0, 1, 4],
+  },
+  final_boss: {
+    bpm: 160,
+    scale: [220, 233.08, 277.18, 329.63, 349.23, 440, 466.16, 554.37],
+    pattern: [0, 5, 4, 3, 6, 5, 4, 1, 0, 6, 7, 5, 6, 4, 3, 1],
+    kotoArp: [0, 3, 5, 7, 2, 4, 6, 4, 0, 4, 5, 7, 3, 5, 4, 1],
+    bassPattern: [0, 0, 3, 0, 4, 4, 1, 2, 0, 0, 4, 0, 5, 4, 2, 1],
+    leadWave: 'sawtooth',
+    subBassFreq: 110,
+    taikoPulse: true,
+    padChord: [0, 1, 4],
   },
 };
 
@@ -149,13 +266,15 @@ export class SoundEngine {
 
   private settings: AudioSettings = {
     muted: false,
-    masterVolume: 0.8,
-    musicVolume: 0.55,
+    masterVolume: 0.85,
+    musicVolume: 0.65,
     sfxVolume: 0.85,
     subtitlesEnabled: false,
   };
 
-  private currentThemeKey: MapId | 'menu' | 'char_select' | 'final_boss' = 'menu';
+  private currentThemeKey: ThemeKey = 'menu';
+  private activeCharId = 'tanjiro';
+  private bossPhaseIntensity: 1 | 2 | 3 = 1;
   private musicIntervalId: ReturnType<typeof setInterval> | null = null;
   private musicStep = 0;
 
@@ -187,7 +306,7 @@ export class SoundEngine {
     if (!this.ctx || !this.masterGain || !this.musicGain || !this.sfxGain) return;
     const now = this.ctx.currentTime;
     const master = this.settings.muted ? 0 : Math.max(0, Math.min(1, this.settings.masterVolume));
-    const music = Math.max(0, Math.min(1, this.settings.musicVolume)) * 0.42;
+    const music = Math.max(0, Math.min(1, this.settings.musicVolume)) * 0.56;
     const sfx = Math.max(0, Math.min(1, this.settings.sfxVolume));
 
     this.masterGain.gain.setTargetAtTime(master, now, 0.03);
@@ -220,15 +339,66 @@ export class SoundEngine {
     }
   }
 
-  public setMapTheme(mapId: MapId | 'menu' | 'char_select', isBoss = false): void {
-    const target: MapId | 'menu' | 'char_select' | 'final_boss' =
-      mapId === 'infinity_castle' && isBoss ? 'final_boss' : mapId;
+  public setBossPhaseIntensity(phase: 1 | 2 | 3): void {
+    if (this.bossPhaseIntensity === phase) return;
+    this.bossPhaseIntensity = phase;
+    if (this.ctx && this.musicIntervalId !== null) {
+      this.startMusicSequencer();
+    }
+  }
+
+  public setMusicContext(
+    mode: MusicContextMode,
+    mapId: MapId | 'menu' | 'char_select' | 'cutscene',
+    isBoss = false,
+    demonArchetype?: DemonArchetype,
+    charId?: string
+  ): void {
+    if (charId) this.activeCharId = charId;
+    if (!isBoss) this.bossPhaseIntensity = 1;
+
+    let target: ThemeKey;
+    if (mode === 'menu' || mapId === 'menu') {
+      target = 'menu';
+    } else if (mode === 'char_select' || mapId === 'char_select') {
+      target = 'char_select';
+    } else if (mode === 'cutscene' || mapId === 'cutscene') {
+      target = 'cutscene';
+    } else if (isBoss) {
+      if (demonArchetype === 'boss_akaza' || demonArchetype === 'akaza_awakened') {
+        target = 'boss_akaza';
+      } else if (demonArchetype === 'boss_doma') {
+        target = 'boss_doma';
+      } else if (demonArchetype === 'boss_kokushibo' || demonArchetype === 'kokushibo_demon') {
+        target = 'boss_kokushibo';
+      } else if (demonArchetype === 'gyutaro' || demonArchetype === 'daki_awakened') {
+        target = 'boss_gyutaro';
+      } else if (
+        demonArchetype === 'boss_muzan' ||
+        demonArchetype === 'muzan_final' ||
+        demonArchetype === 'demon_king_tanjiro' ||
+        mapId === 'infinity_castle'
+      ) {
+        target = 'final_boss';
+      } else {
+        target = mapId;
+      }
+    } else {
+      target = mapId;
+    }
+
     if (this.currentThemeKey === target && this.musicIntervalId !== null) return;
     this.currentThemeKey = target;
     this.musicStep = 0;
     if (this.ctx) {
       this.startMusicSequencer();
     }
+  }
+
+  public setMapTheme(mapId: MapId | 'menu' | 'char_select', isBoss = false): void {
+    const mode: MusicContextMode =
+      mapId === 'menu' ? 'menu' : mapId === 'char_select' ? 'char_select' : 'gameplay';
+    this.setMusicContext(mode, mapId, isBoss);
   }
 
   public stopMusic(): void {
@@ -242,7 +412,8 @@ export class SoundEngine {
     this.stopMusic();
     if (typeof window === 'undefined') return;
     const spec = MAP_MUSIC_THEMES[this.currentThemeKey] ?? MAP_MUSIC_THEMES.bamboo_forest;
-    const eighthMs = Math.round((60 / spec.bpm / 2) * 1000);
+    const phaseTempoMult = this.bossPhaseIntensity === 3 ? 1.16 : this.bossPhaseIntensity === 2 ? 1.08 : 1.0;
+    const eighthMs = Math.max(95, Math.round((60 / (spec.bpm * phaseTempoMult) / 2) * 1000));
 
     this.musicIntervalId = setInterval(() => {
       if (!this.ctx || !this.musicGain || this.ctx.state === 'suspended' || this.settings.muted) {
@@ -252,56 +423,89 @@ export class SoundEngine {
 
       const theme = MAP_MUSIC_THEMES[this.currentThemeKey] ?? MAP_MUSIC_THEMES.bamboo_forest;
       const stepIdx = this.musicStep % theme.pattern.length;
+      const barParity = Math.floor(this.musicStep / 16) % 2;
+      const pitchShift =
+        this.currentThemeKey === 'cutscene' || this.currentThemeKey === 'char_select'
+          ? CHARACTER_MOTIF_SHIFT[this.activeCharId] ?? 1.0
+          : 1.0;
+
       const noteIdx = theme.pattern[stepIdx];
+      const kotoIdx = theme.kotoArp[stepIdx];
       const bassIdx = theme.bassPattern[stepIdx];
       const now = this.ctx.currentTime;
 
-      // Pluck / Shakuhachi lead + Koto octave pluck shimmer
+      // Layer 1: Warm sustained Japanese String Pad every 8 steps
+      if (stepIdx % 8 === 0) {
+        const chordShift = barParity === 1 && stepIdx === 8 ? 1.122 : 1.0;
+        for (const cIdx of theme.padChord) {
+          const padFreq = theme.scale[cIdx % theme.scale.length] * 0.5 * pitchShift * chordShift;
+          const padOsc = this.ctx.createOscillator();
+          padOsc.type = 'triangle';
+          padOsc.frequency.setValueAtTime(padFreq, now);
+          const padGain = this.ctx.createGain();
+          padGain.gain.setValueAtTime(0.001, now);
+          padGain.gain.linearRampToValueAtTime(0.036, now + 0.14);
+          padGain.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+          padOsc.connect(padGain);
+          padGain.connect(this.musicGain);
+          padOsc.start(now);
+          padOsc.stop(now + 1.0);
+        }
+      }
+
+      // Layer 2: Shakuhachi / Erhu Expressive Lead
       if (noteIdx >= 0) {
-        const freq = theme.scale[noteIdx % theme.scale.length];
+        const freq = theme.scale[noteIdx % theme.scale.length] * pitchShift;
         const osc = this.ctx.createOscillator();
         osc.type = theme.leadWave;
         osc.frequency.setValueAtTime(freq, now);
+        if (this.currentThemeKey === 'cutscene' || theme.leadWave === 'sine') {
+          // Gentle Japanese flute vibrato swell
+          osc.frequency.linearRampToValueAtTime(freq * 1.008, now + 0.14);
+          osc.frequency.linearRampToValueAtTime(freq * 0.996, now + 0.3);
+        }
 
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(theme.leadWave === 'sawtooth' ? 1450 : 2200, now);
+        filter.frequency.setValueAtTime(theme.leadWave === 'sawtooth' ? 1550 : 2300, now);
 
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0.001, now);
-        gain.gain.linearRampToValueAtTime(0.13, now + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+        gain.gain.linearRampToValueAtTime(0.115, now + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
 
         osc.connect(filter);
         filter.connect(gain);
         gain.connect(this.musicGain);
         osc.start(now);
-        osc.stop(now + 0.36);
-
-        if (stepIdx % 2 === 0) {
-          const koto = this.ctx.createOscillator();
-          koto.type = 'triangle';
-          koto.frequency.setValueAtTime(freq * 2, now);
-          const kGain = this.ctx.createGain();
-          kGain.gain.setValueAtTime(0.001, now);
-          kGain.gain.linearRampToValueAtTime(0.055, now + 0.008);
-          kGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-          koto.connect(kGain);
-          kGain.connect(this.musicGain);
-          koto.start(now);
-          koto.stop(now + 0.18);
-        }
+        osc.stop(now + 0.38);
       }
 
-      // Drone / shamisen bass
+      // Layer 3: Crisp Koto / Shamisen Plucked Arpeggio
+      if (kotoIdx >= 0) {
+        const kFreq = theme.scale[kotoIdx % theme.scale.length] * 2 * pitchShift;
+        const koto = this.ctx.createOscillator();
+        koto.type = 'triangle';
+        koto.frequency.setValueAtTime(kFreq, now);
+        const kGain = this.ctx.createGain();
+        kGain.gain.setValueAtTime(0.001, now);
+        kGain.gain.linearRampToValueAtTime(0.055, now + 0.008);
+        kGain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+        koto.connect(kGain);
+        kGain.connect(this.musicGain);
+        koto.start(now);
+        koto.stop(now + 0.19);
+      }
+
+      // Layer 4: Resonant Sub-bass Shamisen Drone
       if (bassIdx >= 0) {
-        const bFreq = theme.subBassFreq * (1 + bassIdx * 0.125);
+        const bFreq = theme.subBassFreq * (1 + bassIdx * 0.125) * pitchShift;
         const osc = this.ctx.createOscillator();
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(bFreq, now);
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0.001, now);
-        gain.gain.linearRampToValueAtTime(0.16, now + 0.015);
+        gain.gain.linearRampToValueAtTime(0.15, now + 0.015);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
         osc.connect(gain);
         gain.connect(this.musicGain);
@@ -309,19 +513,43 @@ export class SoundEngine {
         osc.stop(now + 0.3);
       }
 
-      // Taiko drum hit on strong beats
-      if (theme.taikoPulse && (stepIdx === 0 || stepIdx === 4 || (this.currentThemeKey === 'final_boss' && stepIdx % 2 === 0))) {
+      // Layer 5: Taiko & Tsuzumi Percussion (escalates on Phase II/III boss battles!)
+      const denseTaiko =
+        this.currentThemeKey === 'final_boss' ||
+        this.currentThemeKey.startsWith('boss_') ||
+        this.bossPhaseIntensity >= 2;
+      const hitTaiko =
+        theme.taikoPulse &&
+        (stepIdx % 4 === 0 || (denseTaiko && stepIdx % 2 === 0 && (this.bossPhaseIntensity >= 2 || stepIdx === 6 || stepIdx === 14)));
+
+      if (hitTaiko) {
         const osc = this.ctx.createOscillator();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(stepIdx === 0 ? 96 : 82, now);
-        osc.frequency.exponentialRampToValueAtTime(36, now + 0.18);
+        const downbeat = stepIdx === 0 || stepIdx === 8;
+        osc.frequency.setValueAtTime(downbeat ? 98 : 80, now);
+        osc.frequency.exponentialRampToValueAtTime(34, now + 0.18);
         const gain = this.ctx.createGain();
-        gain.gain.setValueAtTime(0.24, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        gain.gain.setValueAtTime(downbeat ? 0.25 : 0.17, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.21);
         osc.connect(gain);
         gain.connect(this.musicGain);
         osc.start(now);
-        osc.stop(now + 0.22);
+        osc.stop(now + 0.23);
+      }
+
+      // Crisp Hyoshigi / wooden clack accent on Boss Phase II–III off-beats
+      if (denseTaiko && this.bossPhaseIntensity >= 2 && (stepIdx === 3 || stepIdx === 11)) {
+        const wood = this.ctx.createOscillator();
+        wood.type = 'square';
+        wood.frequency.setValueAtTime(1420, now);
+        wood.frequency.exponentialRampToValueAtTime(980, now + 0.035);
+        const wGain = this.ctx.createGain();
+        wGain.gain.setValueAtTime(0.04, now);
+        wGain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+        wood.connect(wGain);
+        wGain.connect(this.musicGain);
+        wood.start(now);
+        wood.stop(now + 0.045);
       }
 
       this.musicStep += 1;
@@ -494,7 +722,9 @@ export class SoundEngine {
           ? 1800
           : style === 'stone'
             ? 200
-            : 650;
+            : style === 'wind' || style === 'mist'
+              ? 1100
+              : 650;
     filter.frequency.setValueAtTime(baseFreq, now);
     filter.frequency.exponentialRampToValueAtTime(baseFreq * 2.6, now + 0.16);
     filter.frequency.exponentialRampToValueAtTime(Math.max(120, baseFreq * 0.7), now + dur);
@@ -519,7 +749,9 @@ export class SoundEngine {
           ? 240
           : style === 'stone'
             ? 120
-            : 440 + formIndex * 65;
+            : style === 'wind'
+              ? 520 + formIndex * 55
+              : 440 + formIndex * 65;
     osc.frequency.setValueAtTime(pitch, now);
     osc.frequency.exponentialRampToValueAtTime(pitch * (style === 'thunder' ? 0.35 : 1.4), now + dur * 0.85);
 

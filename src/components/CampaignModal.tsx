@@ -1,7 +1,12 @@
 import { useState } from 'react';
-import { Lock, Play, Swords, X } from 'lucide-react';
+import { Lock, Play, Swords, Users, X } from 'lucide-react';
 import { ALL_BREATHING_IDS, BREATHING_STYLES } from '../game/breathing';
-import { getRouteLevelBriefing, MAP_DISPLAY_NAMES, STORY_LEVELS } from '../game/campaign';
+import {
+  getCampaignForCharacter,
+  getCharacterCampaignInfo,
+  getRouteLevelBriefing,
+  MAP_DISPLAY_NAMES,
+} from '../game/campaign';
 import { getCharacterById } from '../game/characters';
 import { ENCYCLOPEDIA_DEMONS } from '../game/demons';
 import {
@@ -65,6 +70,10 @@ export function CampaignModal({
   onStartTutorial,
   onStartPractice,
 }: CampaignModalProps) {
+  const activeChar = getCharacterById(save.selectedCharacterId);
+  const charCampaign = getCampaignForCharacter(activeChar.id);
+  const campaignInfo = getCharacterCampaignInfo(activeChar.id);
+
   const [tab, setTab] = useState<'story' | 'practice'>('story');
   const [activeChapter, setActiveChapter] = useState<1 | 2 | 3 | 4 | 5>(() => {
     const ch = Math.ceil(save.highestUnlockedLevel / 10);
@@ -72,7 +81,7 @@ export function CampaignModal({
   });
   const [selectedLevel, setSelectedLevel] = useState<StoryLevelDef>(() => {
     return (
-      STORY_LEVELS.find((l) => l.id === save.highestUnlockedLevel) ?? STORY_LEVELS[0]
+      charCampaign.find((l) => l.id === save.highestUnlockedLevel) ?? charCampaign[0]
     );
   });
 
@@ -80,9 +89,8 @@ export function CampaignModal({
   const [practiceDemon, setPracticeDemon] = useState<DemonArchetype>('basic');
   const [practiceStyle, setPracticeStyle] = useState<BreathingStyleId>(save.selectedBreathing);
 
-  const activeChar = getCharacterById(save.selectedCharacterId);
-  const routeBrief = getRouteLevelBriefing(selectedLevel, activeChar.routeId);
-  const chapterLevels = STORY_LEVELS.filter((l) => l.chapter === activeChapter);
+  const routeBrief = getRouteLevelBriefing(selectedLevel, activeChar.routeId, activeChar.id);
+  const chapterLevels = charCampaign.filter((l) => l.chapter === activeChapter);
   const levelUnlocked = selectedLevel.id <= save.highestUnlockedLevel;
 
   return (
@@ -90,10 +98,15 @@ export function CampaignModal({
       <div className="flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-700/90 bg-slate-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <h2 className="font-display text-lg font-bold text-white sm:text-xl">
-              Story Campaign & Arenas
-            </h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <div>
+              <h2 className="font-display text-lg font-bold text-white sm:text-xl">
+                {campaignInfo.campaignTitle}
+              </h2>
+              <p className="text-[11px] text-sky-300">
+                {activeChar.name} · Save Slot Lv.{save.highestUnlockedLevel}/50
+              </p>
+            </div>
             <div className="flex items-center gap-1 rounded-lg bg-slate-950 p-1">
               <button
                 type="button"
@@ -238,9 +251,22 @@ export function CampaignModal({
                     <div className="flex justify-between">
                       <span className="text-slate-400">Reward</span>
                       <span className="font-mono-num font-bold text-amber-300">
-                        +{selectedLevel.rewardCoins} Slayer Coins
+                        +{selectedLevel.rewardCoins} Coins
                       </span>
                     </div>
+                    {(selectedLevel.allyIds ?? selectedLevel.allyHashiraIds) && (
+                      <div className="flex items-center justify-between gap-2 text-emerald-300">
+                        <span className="flex items-center gap-1 text-slate-400">
+                          <Users className="h-3.5 w-3.5 text-emerald-300" />
+                          <span>Allies</span>
+                        </span>
+                        <span className="text-right font-semibold">
+                          {(selectedLevel.allyIds ?? selectedLevel.allyHashiraIds ?? [])
+                            .map((id) => getCharacterById(id).name.split(' ')[0])
+                            .join(', ')}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 

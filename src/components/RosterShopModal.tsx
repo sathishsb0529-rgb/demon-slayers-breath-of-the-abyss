@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Check, Coins, Lock, ShieldCheck, X } from 'lucide-react';
+import { ArrowUpCircle, Check, Coins, Lock, Palette, ShieldCheck, X } from 'lucide-react';
 import { BREATHING_STYLES } from '../game/breathing';
-import { getCharacterById, SLAYER_CHARACTERS } from '../game/characters';
-import { BreathingStyleId, SaveData, SlayerCharacterDef } from '../game/types';
+import { getCharacterById, getCharacterSkins, SLAYER_CHARACTERS } from '../game/characters';
+import { getCharacterProfile, getUpgradeCost } from '../game/save';
+import { BreathingStyleId, CharacterUpgrades, SaveData, SlayerCharacterDef } from '../game/types';
 
 interface RosterShopModalProps {
   save: SaveData;
   onClose: () => void;
   onSelectCharacter: (charId: string, breathing?: BreathingStyleId) => void;
   onBuyCharacter: (charId: string) => { ok: boolean; message: string };
+  onUpgradeStat: (charId: string, stat: keyof CharacterUpgrades) => { ok: boolean; message: string };
+  onSelectSkin: (charId: string, skinId: string) => void;
 }
 
 export function RosterShopModal({
@@ -16,6 +19,8 @@ export function RosterShopModal({
   onClose,
   onSelectCharacter,
   onBuyCharacter,
+  onUpgradeStat,
+  onSelectSkin,
 }: RosterShopModalProps) {
   const [inspectId, setInspectId] = useState<string>(save.selectedCharacterId);
   const [confirmBuyId, setConfirmBuyId] = useState<string | null>(null);
@@ -25,6 +30,8 @@ export function RosterShopModal({
   const isUnlocked = save.unlockedCharacters.includes(inspected.id);
   const isSelected = save.selectedCharacterId === inspected.id;
   const canAfford = save.coins >= inspected.price;
+  const inspectedProfile = getCharacterProfile(save, inspected.id);
+  const skins = getCharacterSkins(inspected.id);
 
   const handleConfirmPurchase = () => {
     const res = onBuyCharacter(inspected.id);
@@ -207,6 +214,91 @@ export function RosterShopModal({
                   ))}
                 </div>
               </div>
+
+              {/* Upgrades & Costume Skins (Per-Character Progression) */}
+              {isUnlocked && (
+                <div className="mt-4 space-y-3 border-t border-slate-800 pt-3">
+                  <div>
+                    <p className="text-xs font-bold tracking-wider text-slate-400 uppercase">
+                      Slayer Training Upgrades (Coins: {inspectedProfile.coins})
+                    </p>
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                      {(
+                        [
+                          { key: 'vitality', label: 'Vitality +22HP' },
+                          { key: 'blade', label: 'Blade +9% ATK' },
+                          { key: 'breathing', label: 'Breath +5% SPD' },
+                        ] as const
+                      ).map((u) => {
+                        const lv = inspectedProfile.upgrades[u.key];
+                        const cost = getUpgradeCost(lv);
+                        const maxed = lv >= 5;
+                        const canPay = !maxed && inspectedProfile.coins >= cost;
+                        return (
+                          <button
+                            key={u.key}
+                            type="button"
+                            disabled={maxed || !canPay}
+                            onClick={() => {
+                              const res = onUpgradeStat(inspected.id, u.key);
+                              setFeedback(res.message);
+                            }}
+                            className={`flex flex-col items-start rounded-md border p-2 text-left text-[11px] transition-colors ${
+                              maxed
+                                ? 'border-emerald-500/40 bg-emerald-950/25 text-emerald-300'
+                                : canPay
+                                  ? 'border-sky-500/40 bg-slate-950/75 text-slate-100 hover:border-sky-400'
+                                  : 'border-slate-800 bg-slate-950/40 text-slate-500'
+                            }`}
+                          >
+                            <span className="flex w-full items-center justify-between font-bold">
+                              <span>{u.label.split(' ')[0]}</span>
+                              <ArrowUpCircle className="h-3 w-3 text-sky-300" />
+                            </span>
+                            <span className="text-[10px] opacity-80">{u.label.split(' ').slice(1).join(' ')}</span>
+                            <span className="font-mono-num mt-1 text-[10px] font-bold text-amber-300">
+                              Lv.{lv}/5 · {maxed ? 'MAX' : `${cost}c`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="flex items-center gap-1.5 text-xs font-bold tracking-wider text-slate-400 uppercase">
+                      <Palette className="h-3.5 w-3.5 text-sky-300" />
+                      <span>Haori & Nichirin Style</span>
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {skins.map((sk) => {
+                        const activeSkin = inspectedProfile.selectedSkinId === sk.id;
+                        return (
+                          <button
+                            key={sk.id}
+                            type="button"
+                            onClick={() => {
+                              onSelectSkin(inspected.id, sk.id);
+                              setFeedback(`Equipped ${sk.name}`);
+                            }}
+                            className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                              activeSkin
+                                ? 'border-sky-400 bg-sky-500/20 text-white'
+                                : 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-slate-500'
+                            }`}
+                          >
+                            <span
+                              className="h-2.5 w-2.5 rounded-sm border border-white/20"
+                              style={{ backgroundColor: sk.haoriPrimary }}
+                            />
+                            <span>{sk.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {feedback && (
                 <p className="mt-3 text-xs font-semibold text-amber-300">{feedback}</p>

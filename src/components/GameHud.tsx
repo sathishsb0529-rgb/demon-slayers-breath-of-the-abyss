@@ -152,6 +152,21 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
               {MAP_DISPLAY_NAMES[hud.mapId]}
             </span>
           </div>
+          {hud.zoneTotal > 1 && (
+            <div className="hidden flex-col items-center gap-0.5 sm:flex">
+              <span className="text-[10px] font-semibold tracking-wide text-sky-300/90">
+                Zone {hud.zoneIndex}/{hud.zoneTotal} · {hud.zoneName}
+              </span>
+              <div className="h-1 w-28 overflow-hidden rounded-sm bg-slate-900/90">
+                <div
+                  className="h-full bg-sky-400 transition-[width] duration-150"
+                  style={{
+                    width: `${Math.max(4, Math.min(100, (hud.playerWorldX / Math.max(1, hud.worldWidth)) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Enemy / Rock Health */}
@@ -217,10 +232,44 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
                   </>
                 )}
               </div>
+
+              {/* Dual / Partner Boss Bar (e.g., Daki fighting alongside Gyutaro) */}
+              {(() => {
+                const pMax = hud.partnerEnemyMaxHp ?? 0;
+                const pHp = hud.partnerEnemyHp ?? 0;
+                if (!hud.partnerEnemyName || pMax <= 0) return null;
+                return (
+                  <div className="mt-1 flex w-full flex-col items-end gap-0.5">
+                    <div className="flex w-full items-baseline justify-between gap-2 text-[10px]">
+                      <span className="font-mono-num text-fuchsia-300">
+                        {Math.max(0, Math.ceil(pHp))} / {pMax}
+                      </span>
+                      <span className="font-display truncate font-bold text-fuchsia-200">
+                        {hud.partnerEnemyName}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-sm border border-fuchsia-500/60 bg-slate-950/90">
+                      <div
+                        className="ml-auto h-full bg-gradient-to-l from-fuchsia-600 to-pink-400 transition-[width] duration-150"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, (pHp / pMax) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
       </div>
+
+      {/* Zone Traversal Guidance Banner */}
+      {hud.advancePrompt && hud.mode === 'STORY' && (
+        <div className="mx-auto mt-2 rounded border border-sky-500/50 bg-slate-950/85 px-3.5 py-1 text-xs font-bold tracking-wide text-sky-200 shadow-lg">
+          {hud.advancePrompt}
+        </div>
+      )}
 
       {/* Tutorial Step Guidance Banner */}
       {hud.mode === 'TUTORIAL' && (

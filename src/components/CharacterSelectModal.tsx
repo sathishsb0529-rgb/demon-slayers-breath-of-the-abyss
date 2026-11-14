@@ -1,8 +1,14 @@
 import { useState } from 'react';
 import { Check, Sparkles, Swords, X } from 'lucide-react';
 import { BREATHING_STYLES } from '../game/breathing';
-import { getLevelById, getRouteLevelBriefing } from '../game/campaign';
+import {
+  getCampaignForCharacter,
+  getCharacterCampaignInfo,
+  getLevelById,
+  getRouteLevelBriefing,
+} from '../game/campaign';
 import { getCharacterById, SLAYER_CHARACTERS, STARTER_CHARACTERS } from '../game/characters';
+import { getCharacterProfile } from '../game/save';
 import { BreathingStyleId, SaveData, SlayerCharacterDef } from '../game/types';
 
 interface CharacterSelectModalProps {
@@ -125,7 +131,9 @@ export function CharacterSelectModal({
   };
 
   const styleDef = BREATHING_STYLES[selectedBreathing];
-  const routePreview = getRouteLevelBriefing(getLevelById(save.highestUnlockedLevel), activeDef.routeId);
+  const activeProfile = getCharacterProfile(save, activeDef.id);
+  const campaignInfo = getCharacterCampaignInfo(activeDef.id);
+  const routePreview = getRouteLevelBriefing(getLevelById(activeProfile.highestUnlockedLevel), activeDef.routeId);
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-3 sm:p-6">
@@ -186,6 +194,7 @@ export function CharacterSelectModal({
               const chosen = char.id === activeDef.id;
               const equipped = char.id === save.selectedCharacterId;
               const charStyle = BREATHING_STYLES[char.defaultBreathing];
+              const charProf = getCharacterProfile(save, char.id);
               return (
                 <button
                   key={char.id}
@@ -199,7 +208,7 @@ export function CharacterSelectModal({
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <span
-                      className="h-9 w-2 shrink-0 rounded-full"
+                      className="h-9 w-2 shrink-0 rounded-sm"
                       style={{ backgroundColor: charStyle.primaryColor }}
                     />
                     <div className="min-w-0">
@@ -212,12 +221,12 @@ export function CharacterSelectModal({
                         )}
                       </div>
                       <p className="truncate text-[11px] text-slate-400">
-                        {charStyle.name} · Difficulty: {char.difficulty}
+                        {charStyle.name} · Lv.{charProf.highestUnlockedLevel}/50 · {charProf.coins} Coins
                       </p>
                     </div>
                   </div>
                   <span className="font-mono-num shrink-0 text-[11px] font-semibold text-slate-300">
-                    {char.maxHp} HP
+                    {char.maxHp + charProf.upgrades.vitality * 22} HP
                   </span>
                 </button>
               );
@@ -307,14 +316,21 @@ export function CharacterSelectModal({
                 </div>
               </div>
 
-              {/* Story Route Preview */}
+              {/* Independent Character Campaign & Save Preview */}
               <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-                <p className="flex items-center gap-1.5 text-[11px] font-bold text-sky-300">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>{routePreview.routeLabel}</span>
+                <p className="flex items-center justify-between gap-2 text-[11px] font-bold text-sky-300">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>{campaignInfo.campaignTitle}</span>
+                  </span>
+                  <span className="font-mono-num text-emerald-300">
+                    Save: Lv.{activeProfile.highestUnlockedLevel}/50 · {activeProfile.coins} Coins
+                  </span>
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                  {routePreview.routeIntro}
+                  {activeProfile.highestUnlockedLevel === 1
+                    ? (getCampaignForCharacter(activeDef.id)[0]?.intro ?? routePreview.routeIntro)
+                    : routePreview.routeIntro}
                 </p>
               </div>
             </div>

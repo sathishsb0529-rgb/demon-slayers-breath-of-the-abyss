@@ -205,6 +205,56 @@ export const BREATHING_STYLES: Record<BreathingStyleId, BreathingStyleDef> = {
     ],
   },
 
+  wind: {
+    id: 'wind',
+    name: 'Wind Breathing',
+    primaryColor: '#34d399',
+    secondaryColor: '#ecfdf5',
+    glowColor: '#059669',
+    bladeBaseColor: '#047857',
+    bladeEdgeColor: '#6ee7b7',
+    tsubaColor: '#cbd5e1',
+    forms: [
+      mkForm(1, 'First Form: Dust Whirlwind Cutter', 'forward_surge', {
+        startup: 0.08,
+        forwardImpulse: 760,
+        range: 195,
+        triggersRagdoll: true,
+        description: 'Cyclone-fast forward gale dash tearing through demon guards.',
+      }),
+      mkForm(2, 'Second Form: Claws-Purifying Wind', 'upward_crescent', {
+        startup: 0.09,
+        forwardImpulse: 440,
+        range: 185,
+        reachY: 140,
+        description: 'Four sweeping claw-like emerald wind arcs.',
+      }),
+      mkForm(3, 'Third Form: Clean Storm Wind Tree', 'spin_wheel', {
+        startup: 0.09,
+        forwardImpulse: 340,
+        range: 205,
+        description: 'Defensive whirlwind vortex slicing everything nearby.',
+      }),
+      mkForm(4, 'Fourth Form: Rising Dust Storm', 'upward_crescent', {
+        startup: 0.1,
+        verticalImpulse: -340,
+        forwardImpulse: 490,
+        range: 215,
+        description: 'Violent rising spiral of razor-sharp air currents.',
+      }),
+      mkForm(5, 'Fifth Form: Black Gale Mountain Mist', 'dragon_finisher', {
+        startup: 0.11,
+        forwardImpulse: 880,
+        range: 265,
+        reachY: 155,
+        damageMult: 4.45,
+        knockbackX: 880,
+        knockbackY: -490,
+        description: 'Ferocious tempest surge obliterating Upper Moon defenses.',
+      }),
+    ],
+  },
+
   insect: {
     id: 'insect',
     name: 'Insect Breathing',

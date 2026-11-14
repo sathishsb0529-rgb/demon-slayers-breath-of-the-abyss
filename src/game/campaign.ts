@@ -104,8 +104,9 @@ function makeLevel(
   rewardCoins: number,
   intro: string,
   isBossLevel = false,
-  allyHashiraIds?: string[],
-  cutsceneId?: string
+  allyIds?: string[],
+  cutsceneId?: string,
+  postCutsceneId?: string
 ): StoryLevelDef {
   return {
     id,
@@ -121,8 +122,10 @@ function makeLevel(
     rewardCoins,
     difficulty,
     isBossLevel,
-    allyHashiraIds,
+    allyHashiraIds: allyIds,
+    allyIds,
     cutsceneId,
+    postCutsceneId,
   };
 }
 
@@ -130,56 +133,56 @@ export const STORY_LEVELS: StoryLevelDef[] = [
   // CHAPTER 1: TRAINING AND BEGINNING (1 - 10)
   makeLevel(1, 1, 'First Night Beneath Bamboo', 'bamboo_forest', [
     { archetype: 'temple_demon', name: 'Temple Demon', subtitle: 'Feral Night Prowler' },
-  ], 'Normal', 45, 'Your first patrol outside Mt. Sagiri. A predatory demon stalks the bamboo grove.', false, undefined, 'cs_first_demon'),
+  ], 'Normal', 45, 'Your first patrol outside Mt. Sagiri. Cross the bamboo grove and silver river bridge to hunt down the prowling demon.', false, undefined, 'cs_first_demon'),
   makeLevel(2, 1, 'Echoes on the Trail', 'mountain_training', [
     { archetype: 'basic', name: 'Ridge Stalker', subtitle: 'Lesser Demon', hpScale: 1.05 },
     { archetype: 'chachamaru', name: 'Feline Demon Mirage', subtitle: 'Agile Prowler', hpScale: 0.9 },
-  ], 'Normal', 55, 'Swift demons ambush the mountain pass under thick dawn mist.'),
+  ], 'Normal', 55, 'Swift demons ambush the mountain pass and waterfall gorge under thick dawn mist.'),
   makeLevel(3, 1, 'Blizzard at Dawn', 'snowy_mountain', [
     { archetype: 'fast', name: 'Frost Claw', subtitle: 'Swift Demon' },
     { archetype: 'horned_demon', name: 'Horned Demon', subtitle: 'Heavy Charger', hpScale: 0.9 },
-  ], 'Normal', 65, 'Freezing winds sweep the ridge. Watch for heavy horned charges.'),
+  ], 'Normal', 65, 'Freezing winds sweep across the icicle pass and timber ravine bridge. Watch for heavy horned charges.'),
   makeLevel(4, 1, 'Wisteria Gate Trial', 'mountain_training', [
     { archetype: 'tongue_demon', name: 'Tongue Demon', subtitle: 'Caged Lasher' },
     { archetype: 'regenerating', name: 'Moss Fiend', subtitle: 'Regenerating Demon' },
-  ], 'Normal', 75, 'Final Selection begins. Overcome demons capable of closing shallow wounds.'),
+  ], 'Normal', 75, 'Final Selection begins. Traverse the cedar trail and mountain cavern to overcome regenerating fiends.'),
   makeLevel(5, 1, 'The Hand Demon of Mt. Fujikasane', 'dark_forest', [
     { archetype: 'boss_hand', name: 'Hand Demon', subtitle: 'Final Selection Terror', isBoss: true },
-  ], 'Hard', 120, 'A grotesque giant demon who hunted dozens of apprentices awaits in the dark clearing.', true, undefined, 'cs_hand_demon'),
+  ], 'Hard', 120, 'A grotesque giant demon who hunted dozens of apprentices awaits deep inside the dark forest clearing.', true, undefined, 'cs_hand_demon'),
   makeLevel(6, 1, 'Shadows of the Swamp', 'japanese_village', [
     { archetype: 'muzan_child', name: 'Shadow Infiltrator', subtitle: 'Muzan Scout' },
     { archetype: 'swamp_demon', name: 'Swamp Demon', subtitle: 'Abyssal Ambusher' },
-  ], 'Normal', 80, 'Villagers vanish after sunset. Intercept the Swamp Demon hiding below the lanterns.'),
+  ], 'Normal', 80, 'Villagers vanish after sunset. Cross the lantern market street and canal bridge to intercept the Swamp Demon.'),
   makeLevel(7, 1, 'Crimson Blood Awakening', 'dark_forest', [
     { archetype: 'nezuko_base', name: 'Nezuko · Blood Trial', subtitle: 'Kamado Instincts' },
-  ], 'Normal', 85, 'Spar and restrain a demon surging with Exploding Blood energy.'),
+  ], 'Normal', 85, 'Spar and calm Nezuko as Exploding Blood instincts surge through the foggy hollow.'),
   makeLevel(8, 1, 'Temari & Arrow Ambush', 'japanese_village', [
     { archetype: 'yahaba', name: 'Yahaba · Arrow Demon', subtitle: 'Asakusa Assassin' },
     { archetype: 'susamaru', name: 'Susamaru · Temari Demon', subtitle: 'Asakusa Assassin' },
-  ], 'Hard', 95, 'Deflect bouncing Temari spheres and vector arrows inside the courtyard.'),
+  ], 'Hard', 95, 'Deflect bouncing Temari spheres and vector arrows across the village rooftops and square.'),
   makeLevel(9, 1, 'Asakusa Physician & Progenitor', 'japanese_village', [
     { archetype: 'yushiro', name: 'Yushiro · Talisman Test', subtitle: 'Blindfold Talisman', hpScale: 0.85 },
     { archetype: 'muzan_adult', name: 'Muzan · Disguise Mirage', subtitle: 'Tsukihiko Illusion', hpScale: 0.55 },
-  ], 'Hard', 105, 'Tamayo and Yushiro test your resolve before Muzan’s oppressive aura strikes.'),
+  ], 'Hard', 105, 'Tamayo and Yushiro test your resolve before Muzan’s oppressive aura strikes in the evening street.'),
   makeLevel(10, 1, 'Kyogai · Tsuzumi Mansion', 'abandoned_temple', [
     { archetype: 'strong', name: 'Stone Arm Brute', subtitle: 'Guardian Demon', hpScale: 1.15 },
     { archetype: 'kyogai', name: 'Kyogai · Drum Demon', subtitle: 'Former Lower Six', isBoss: true },
-  ], 'Hard', 150, 'The shifting temple echoes with Kyogai’s rapid drum slash waves.', true),
+  ], 'Hard', 150, 'Advance through the crumbling temple halls as Kyogai twists gravity with his embedded drums.', true),
 
   // CHAPTER 2: DEMON HUNTING (11 - 20)
   makeLevel(11, 2, 'Threads of the Spider Mother', 'spider_mountain', [
     { archetype: 'spider_mother_main', name: 'Mother Spider Demon', subtitle: 'Mt. Natagumo', hpScale: 1.05 },
     { archetype: 'spider_sister_main', name: 'Sister Spider Demon', subtitle: 'Mt. Natagumo', hpScale: 1.05 },
-  ], 'Hard', 115, 'Silver puppet threads bind lost slayers between ancient pines.', false, undefined, 'cs_spider_mountain'),
+  ], 'Hard', 115, 'Inosuke and Tanjiro press into Spider Mountain where silver threads ensnare fallen slayers.', false, ['inosuke'], 'cs_spider_mountain'),
   makeLevel(12, 2, 'The Venomous Brood', 'spider_mountain', [
     { archetype: 'spider_brother_main', name: 'Brother Spider Demon', subtitle: 'Venom Spinner', hpScale: 1.1 },
-  ], 'Hard', 120, 'Avoid corrosive spider venom while leaping over woodland barricades.'),
+  ], 'Hard', 120, 'Zenitsu dashes through the poison-laced ravine to sever the Brother Spider Demon’s lair.', false, ['zenitsu']),
   makeLevel(13, 2, 'The Carapace Father', 'spider_mountain', [
     { archetype: 'spider_father_main', name: 'Father Spider Demon', subtitle: 'Armored Titan', hpScale: 1.15 },
-  ], 'Hard', 130, 'Shatter the colossal spider brute guarding the mountain heart.'),
+  ], 'Hard', 130, 'Fight alongside Giyu Tomioka across the gorge bridge to shatter the colossal spider titan.', false, ['giyu']),
   makeLevel(14, 2, 'Lower Moon Five: Rui', 'spider_mountain', [
     { archetype: 'boss_rui', name: 'Rui', subtitle: 'Lower Rank Five', isBoss: true },
-  ], 'Hard', 200, 'Face the ruthless Lower Moon Five amidst razor-sharp crimson threads.', true),
+  ], 'Hard', 200, 'Tanjiro and Nezuko stand united against Lower Rank Five Rui amidst razor-sharp crimson threads.', true, ['nezuko_ally']),
   makeLevel(15, 2, 'Lower Ranks: Kamanue & Mukago', 'snowy_mountain', [
     { archetype: 'kamanue', name: 'Kamanue · Lower Six', subtitle: 'Twelve Kizuki' },
     { archetype: 'mukago', name: 'Mukago · Lower Four', subtitle: 'Twelve Kizuki' },
@@ -187,7 +190,7 @@ export const STORY_LEVELS: StoryLevelDef[] = [
   makeLevel(16, 2, 'Lower Moon One: Enmu & Slasher', 'snowy_mountain', [
     { archetype: 'slasher', name: 'Slasher', subtitle: 'Mugen Express Phantom' },
     { archetype: 'boss_enmu', name: 'Enmu', subtitle: 'Lower Rank One', isBoss: true },
-  ], 'Hard', 220, 'Cut down Slasher and shatter Enmu’s nightmare Blood Demon Art.', true),
+  ], 'Hard', 220, 'Fight beside Kyojuro Rengoku on the frozen pass to break Enmu’s nightmare Blood Demon Art.', true, ['rengoku']),
   makeLevel(17, 2, 'Lower Two & Three Purge', 'bamboo_forest', [
     { archetype: 'wakuraba', name: 'Wakuraba · Lower Three', subtitle: 'Velocity Blitz' },
     { archetype: 'rokuro', name: 'Rokuro · Lower Two', subtitle: 'Crimson Maul' },
@@ -195,42 +198,50 @@ export const STORY_LEVELS: StoryLevelDef[] = [
   makeLevel(18, 2, 'Neon Lanterns of Yoshiwara', 'entertainment_district', [
     { archetype: 'muzan_female', name: 'Crimson Mistress Shade', subtitle: 'Upper Disguise', hpScale: 0.72 },
     { archetype: 'boss_daki', name: 'Daki · Sash Form', subtitle: 'Upper Rank Six', hpScale: 0.78 },
-  ], 'Hard', 160, 'Investigate the glowing rooftops of the Entertainment District.'),
+  ], 'Hard', 160, 'Scout the glowing alleys and balconies of Yoshiwara with Sound Hashira Tengen Uzui.', false, ['tengen']),
   makeLevel(19, 2, 'Awakened Obi Storm', 'entertainment_district', [
     { archetype: 'daki_awakened', name: "Daki's Awakened Form", subtitle: 'Third-Eye Upper Six', hpScale: 1.0 },
-  ], 'Hashira', 175, 'Daki awakens her third eye—dodge sweeping silk ribbons across the balconies!'),
+  ], 'Hashira', 175, 'Zenitsu and Inosuke charge across the neon roofs to cut Daki’s sweeping obi ribbons!', false, ['zenitsu', 'inosuke']),
   makeLevel(20, 2, 'Upper Moon Six: Gyutaro & Daki', 'entertainment_district', [
-    { archetype: 'daki_awakened', name: "Daki's Awakened Form", subtitle: 'Upper Rank Six', hpScale: 0.85 },
-    { archetype: 'gyutaro', name: 'Gyutaro · Upper Rank Six', subtitle: 'Poison Blood Sickles', isBoss: true },
-  ], 'Hashira', 285, 'Survive Gyutaro’s poisoned blood sickles amid blazing Entertainment District rooftops!', true, undefined, 'cs_upper_moon_six'),
+    {
+      archetype: 'gyutaro',
+      name: 'Gyutaro · Upper Rank Six',
+      subtitle: 'Poison Blood Sickles',
+      isBoss: true,
+      partnerArchetype: 'daki_awakened',
+      partnerName: 'Daki · Awakened Obi',
+      partnerSubtitle: 'Upper Six Sibling',
+      partnerHpScale: 0.75,
+    },
+  ], 'Hashira', 320, 'Tanjiro, Zenitsu, Inosuke, and Tengen clash simultaneously with Gyutaro and Daki amidst the blazing district!', true, ['tengen', 'zenitsu', 'inosuke'], 'cs_upper_moon_six'),
 
   // CHAPTER 3: HASHIRA AND UPPER MOONS (21 - 30)
   makeLevel(21, 3, 'Hantengu’s Emotion Split', 'dark_forest', [
     { archetype: 'sekido', name: 'Sekido · Anger', subtitle: 'Hantengu Clone' },
     { archetype: 'karaku', name: 'Karaku · Pleasure', subtitle: 'Hantengu Clone' },
-  ], 'Hashira', 175, 'Guard the forest trail against Sekido’s lightning and Karaku’s gales.', false, undefined, 'cs_swordsmith'),
+  ], 'Hashira', 175, 'Guard the forest trail with Nezuko against Sekido’s lightning and Karaku’s gales.', false, ['nezuko_ally'], 'cs_swordsmith'),
   makeLevel(22, 3, 'Sorrow & Joy of Upper Four', 'swordsmith_village', [
     { archetype: 'aizetsu', name: 'Aizetsu · Sorrow', subtitle: 'Hantengu Clone' },
     { archetype: 'urogi', name: 'Urogi · Joy', subtitle: 'Winged Clone' },
-  ], 'Hashira', 185, 'Defend the forge rooftops from spear thrusts and aerial sonic dives.'),
+  ], 'Hashira', 185, 'Fight beside Genya through the forge village against Aizetsu and Urogi.', false, ['genya']),
   makeLevel(23, 3, 'Porcelain Terror: Gyokko', 'swordsmith_village', [
-    { archetype: 'nezuko_awakened', name: 'Nezuko · Blood Burst Assist', subtitle: 'Sparring Trial', hpScale: 0.8 },
+    { archetype: 'nezuko_awakened', name: 'Demon Mirage Sentinel', subtitle: 'Upper Guard', hpScale: 0.8 },
     { archetype: 'gyokko', name: 'Gyokko · Upper Rank Five', subtitle: 'Porcelain Artisan', isBoss: true },
-  ], 'Hashira', 205, 'Track Gyokko as he teleports between porcelain pots across the smithy.'),
+  ], 'Hashira', 215, 'Join Mist Hashira Muichiro Tokito to strike Gyokko down between porcelain vessels!', true, ['muichiro']),
   makeLevel(24, 3, 'Hantengu: Urami Resentment', 'swordsmith_village', [
     { archetype: 'urami', name: 'Urami · Giant Resentment', subtitle: 'Upper Rank Four Shield', hpScale: 1.0 },
-  ], 'Hashira', 215, 'Break through Urami’s colossal guard to expose the fleeing core.'),
+  ], 'Hashira', 215, 'Love Hashira Mitsuri Kanroji holds the wooden dragons back while you cleave Urami!', false, ['mitsuri']),
   makeLevel(25, 3, 'Upper Moon Four: Zohakuten', 'swordsmith_village', [
     { archetype: 'hantengu_base', name: 'Hantengu Core', subtitle: 'Upper Four', hpScale: 0.7 },
     { archetype: 'zohakuten', name: 'Zohakuten · Hatred', subtitle: 'Upper Rank Four', isBoss: true },
-  ], 'Upper Moon', 345, 'Survive wooden dragon onslaughts and drum lightning shockwaves.', true),
+  ], 'Upper Moon', 360, 'With Nezuko, Genya, and Mitsuri, survive wooden dragon onslaughts and drum shockwaves!', true, ['nezuko_ally', 'mitsuri', 'genya']),
   makeLevel(26, 3, 'Hashira Training: Summit', 'hashira_grounds', [
     { archetype: 'ubume', name: 'Ubume · Phantom Trial', subtitle: 'Hashira Training Memory', hpScale: 1.1 },
-  ], 'Hashira', 210, 'Sharpen your reflexes against phantom illusions at Corps headquarters.', false, undefined, 'cs_hashira_meeting'),
+  ], 'Hashira', 210, 'Sharpen your reflexes alongside fellow slayers at Demon Slayer Corps headquarters.', false, undefined, 'cs_hashira_meeting'),
   makeLevel(27, 3, 'Hashira Sparring: Crimson Medicine', 'hashira_grounds', [
     { archetype: 'tamayo', name: 'Tamayo Illusion', subtitle: 'Aroma Training', hpScale: 1.1 },
     { archetype: 'strong', name: 'Stone Trial Sentinel', subtitle: 'Heavy Sparring Spirit', hpScale: 1.6 },
-  ], 'Hashira', 220, 'Resist intoxicating Blood Aroma while shattering armored stone endurance.'),
+  ], 'Hashira', 220, 'Resist intoxicating Blood Aroma under Gyomei’s stone training watch.', false, ['gyomei']),
   makeLevel(28, 3, 'Night Raid on the Estate', 'bamboo_forest', [
     { archetype: 'muzan_child', name: "Muzan's Child Illusion", subtitle: 'Phantom Scout', hpScale: 1.15 },
     { archetype: 'muzan_female', name: "Muzan's Female Illusion", subtitle: 'Phantom Aristocrat', hpScale: 1.15 },
@@ -238,10 +249,10 @@ export const STORY_LEVELS: StoryLevelDef[] = [
   makeLevel(29, 3, 'Ruins of the Ancient Shrine', 'abandoned_temple', [
     { archetype: 'nezuko_adult', name: 'Blood Burst Echo', subtitle: 'Awakened Demon', hpScale: 1.15 },
     { archetype: 'tanjiro_demon_form', name: 'Abyssal Slayer Shade', subtitle: 'Dark Vision', hpScale: 1.15 },
-  ], 'Upper Moon', 250, 'Clear the final stronghold before the Corps gathers.'),
+  ], 'Upper Moon', 250, 'Clear the final shrine ruins with Sanemi before the Corps gathers.'),
   makeLevel(30, 3, 'Trial of the Red Blade', 'hashira_grounds', [
     { archetype: 'boss_akaza', name: 'Akaza Mirage', subtitle: 'Upper Rank Three Echo', isBoss: true, hpScale: 0.95 },
-  ], 'Upper Moon', 380, 'Face a phantom manifestation of Upper Rank Three to prove Hashira mastery.', true),
+  ], 'Upper Moon', 380, 'Face a phantom manifestation of Upper Rank Three beside Giyu to prove Hashira mastery.', true, ['giyu']),
 
   // CHAPTER 4: THE FINAL PREPARATION (31 - 40)
   makeLevel(31, 4, 'Blizzard Crucible', 'snowy_mountain', [
@@ -277,143 +288,401 @@ export const STORY_LEVELS: StoryLevelDef[] = [
   ], 'Upper Moon', 345, 'Cleanse the remaining Upper Rank echoes.'),
   makeLevel(39, 4, 'Final Hashira Summit', 'hashira_grounds', [
     { archetype: 'muzan_adult', name: "Muzan's Adult Aspect", subtitle: 'Progenitor Vessel', hpScale: 1.2 },
-  ], 'Upper Moon', 360, 'One final test at Corps headquarters before the Infinity Castle opens.'),
+  ], 'Upper Moon', 360, 'Stand with the Hashira at Corps headquarters before the Infinity Castle opens.', false, ['giyu', 'sanemi']),
   makeLevel(40, 4, 'The Biwa Resounds', 'hashira_grounds', [
     { archetype: 'boss_enmu', name: 'Kagaya Trap Guardian', subtitle: 'Infinity Herald', isBoss: true, hpScale: 1.5, damageScale: 1.3 },
-  ], 'Upper Moon', 440, 'Shoji doors open beneath your feet as Nakime summons the Corps into the abyss.', true, undefined, 'cs_infinity_castle'),
+  ], 'Upper Moon', 440, 'Shoji doors open beneath your feet as Nakime summons the Corps into the abyss.', true, ['giyu', 'mitsuri'], 'cs_infinity_castle'),
 
   // CHAPTER 5: INFINITY CASTLE (41 - 50)
   makeLevel(41, 5, 'Black Thunder: Kaigaku', 'infinity_castle', [
     { archetype: 'fast', name: 'Castle Sentinel', subtitle: 'Lower Rank Strength', hpScale: 2.0 },
     { archetype: 'kaigaku', name: 'Kaigaku · Upper Rank Six', subtitle: 'Corrupted Thunder', isBoss: true },
-  ], 'Upper Moon', 440, 'Gravity twists inside the castle as Kaigaku strikes with black lightning.', true),
+  ], 'Upper Moon', 440, 'Cross the shifting foyer and moving tatami chasm to strike down Black Lightning Kaigaku.', true, ['zenitsu']),
   makeLevel(42, 5, 'Battle Against Nakime', 'infinity_castle', [
     { archetype: 'boss_nakime', name: 'Nakime', subtitle: 'Upper Rank Four · Biwa', isBoss: true },
-  ], 'Upper Moon', 500, 'Disrupt the Biwa demon shifting the Infinity Castle platforms.', true),
-  makeLevel(43, 5, 'First Akaza Battle', 'infinity_castle', [
-    { archetype: 'boss_akaza', name: 'Akaza', subtitle: 'Upper Rank Three (Phase I)', isBoss: true, hpScale: 0.96 },
-  ], 'Upper Moon', 540, 'Upper Rank Three leaps into the rotating hall with Destructive Death martial arts.', true, undefined, 'cs_akaza_duel'),
-  makeLevel(44, 5, 'Final Akaza Battle', 'infinity_castle', [
+  ], 'Upper Moon', 500, 'Obanai Iguro and Mitsuri Kanroji traverse the vertical stairways to silence Nakime’s Biwa.', true, ['obanai', 'mitsuri']),
+  makeLevel(43, 5, 'Akaza Encounter: Tanjiro & Giyu', 'infinity_castle', [
+    { archetype: 'boss_akaza', name: 'Akaza', subtitle: 'Upper Rank Three (Phase I)', isBoss: true, hpScale: 1.0 },
+  ], 'Upper Moon', 560, 'Tanjiro and Water Hashira Giyu face Upper Rank Three Akaza inside the rotating castle hall!', true, ['giyu'], 'cs_akaza_duel'),
+  makeLevel(44, 5, 'Final Akaza Battle: Selfless State', 'infinity_castle', [
     { archetype: 'akaza_awakened', name: "Akaza's Awakened Form", subtitle: 'Upper Rank Three · Compass Needle', isBoss: true, hpScale: 1.25, damageScale: 1.15 },
-  ], 'INSANE', 650, 'Unlock the Transparent World mindset to overcome Awakened Akaza!', true),
-  makeLevel(45, 5, 'First Doma Battle', 'infinity_castle', [
+  ], 'INSANE', 660, 'Beside Giyu Tomioka, enter the Selfless State to shatter Akaza’s Compass Needle!', true, ['giyu']),
+  makeLevel(45, 5, 'Doma Chamber: Kanao & Inosuke', 'infinity_castle', [
     { archetype: 'doma_ice_clone', name: "Doma's Cryo Clone", subtitle: 'Lotus Guardian', hpScale: 1.1 },
-    { archetype: 'boss_doma', name: 'Doma', subtitle: 'Upper Rank Two (Phase I)', isBoss: true, hpScale: 0.96 },
-  ], 'Upper Moon', 600, 'Deadly frost lotus Blood Demon Arts freeze the air inside the lotus chamber.', true, undefined, 'cs_doma_duel'),
-  makeLevel(46, 5, 'Final Doma Battle', 'infinity_castle', [
+    { archetype: 'boss_doma', name: 'Doma', subtitle: 'Upper Rank Two (Phase I)', isBoss: true, hpScale: 1.0 },
+  ], 'Upper Moon', 620, 'Kanao and Inosuke charge into the freezing lotus chamber against Upper Rank Two Doma!', true, ['kanao', 'inosuke'], 'cs_doma_duel'),
+  makeLevel(46, 5, 'Final Doma Battle: Rime Bodhisattva', 'infinity_castle', [
     { archetype: 'doma_final', name: "Doma's Final Battle Form", subtitle: 'Upper Rank Two · Rime Bodhisattva', isBoss: true, hpScale: 1.25, damageScale: 1.15 },
-  ], 'INSANE', 720, 'Shatter the icy storm and Cryo Clones of Upper Rank Two!', true),
-  makeLevel(47, 5, 'First Kokushibo Battle', 'infinity_castle', [
-    { archetype: 'boss_kokushibo', name: 'Kokushibo', subtitle: 'Upper Rank One (Phase I)', isBoss: true, hpScale: 0.96 },
-  ], 'INSANE', 700, 'Confront the six-eyed samurai demon wielding Moon Breathing flesh blades.', true, undefined, 'cs_kokushibo_duel'),
-  makeLevel(48, 5, 'Final Kokushibo Battle', 'infinity_castle', [
+  ], 'INSANE', 740, 'With Kanao and Inosuke at your side, shatter Doma’s freezing clones and giant Bodhisattva!', true, ['kanao', 'inosuke']),
+  makeLevel(47, 5, 'Kokushibo: Sanemi & Gyomei', 'infinity_castle', [
+    { archetype: 'boss_kokushibo', name: 'Kokushibo', subtitle: 'Upper Rank One (Phase I)', isBoss: true, hpScale: 1.0 },
+  ], 'INSANE', 720, 'Wind Hashira Sanemi and Stone Hashira Gyomei clash with six-eyed Upper Rank One Kokushibo!', true, ['sanemi', 'gyomei', 'muichiro'], 'cs_kokushibo_duel'),
+  makeLevel(48, 5, 'Final Kokushibo: Eclipse of Six Eyes', 'infinity_castle', [
     { archetype: 'kokushibo_demon', name: "Kokushibo's Transformation", subtitle: 'Upper Rank One · Calamity', isBoss: true, hpScale: 1.28, damageScale: 1.18 },
-  ], 'INSANE', 850, 'Survive relentless crescent blades in the grand suspended shrine.', true),
+  ], 'INSANE', 880, 'Sanemi, Gyomei, and Genya unleash crimson red blades against transformed Kokushibo!', true, ['sanemi', 'gyomei', 'genya']),
   makeLevel(49, 5, 'Demon King Vessel Assault', 'infinity_castle', [
-    { archetype: 'boss_muzan', name: 'Muzan · Awakening Cocoon', subtitle: 'Progenitor Aspect', hpScale: 0.72 },
+    { archetype: 'boss_muzan', name: 'Muzan · Awakening Cocoon', subtitle: 'Progenitor Aspect', hpScale: 0.78 },
     { archetype: 'demon_king_tanjiro', name: 'Demon King Mirage', subtitle: 'Abyssal Eclipse', hpScale: 0.88, isBoss: true },
-  ], 'INSANE', 900, 'Cut through the nightmarish vision guarding the Demon King throne.', true),
-  makeLevel(50, 5, 'Final Muzan Battle', 'infinity_castle', [
+  ], 'INSANE', 950, 'Break past Muzan’s cocoon ward into the Throne Sanctum alongside the surviving Hashira.', true, ['giyu', 'obanai', 'mitsuri']),
+  makeLevel(50, 5, 'Final Muzan Battle: Dawn Approaching', 'infinity_castle', [
     { archetype: 'muzan_final', name: 'Muzan Kibutsuji · Final Form', subtitle: 'Progenitor of Demons', isBoss: true },
-  ], 'INSANE', 2000, 'Stand beside fellow Hashira AI allies and defeat Muzan Kibutsuji before sunrise!', true, ['giyu', 'rengoku'], 'cs_muzan_finale'),
+  ], 'INSANE', 2000, 'Unite with the Hashira inside the Throne Sanctum and hold Muzan until the sun rises!', true, ['giyu', 'sanemi', 'gyomei'], 'cs_muzan_finale', 'cs_ending'),
 ];
 
-export function getLevelById(id: number): StoryLevelDef {
-  return STORY_LEVELS.find((l) => l.id === id) ?? STORY_LEVELS[0];
+export interface CharacterCampaignSummary {
+  characterId: string;
+  campaignTitle: string;
+  startingLocation: string;
+  prologueCutsceneId: string;
+  rivalBossName: string;
+  canonPartnerText: string;
+}
+
+const CHARACTER_CAMPAIGN_INFO: Record<string, CharacterCampaignSummary> = {
+  tanjiro: {
+    characterId: 'tanjiro',
+    campaignTitle: 'Hinokami Chronicles: Path to Sunrise',
+    startingLocation: 'Bamboo Forest Outside Mt. Sagiri',
+    prologueCutsceneId: 'cs_opening',
+    rivalBossName: 'Akaza & Muzan Kibutsuji',
+    canonPartnerText: 'Nezuko, Zenitsu, Inosuke & Giyu Tomioka',
+  },
+  zenitsu: {
+    characterId: 'zenitsu',
+    campaignTitle: 'Thunderclap Flash: Breaking the Cowardice',
+    startingLocation: 'Dark Forest Trail & Spider Ravine',
+    prologueCutsceneId: 'cs_zenitsu_opening',
+    rivalBossName: 'Kaigaku · Upper Rank Six',
+    canonPartnerText: 'Tanjiro, Inosuke & Tengen Uzui',
+  },
+  inosuke: {
+    characterId: 'inosuke',
+    campaignTitle: 'Lord of the Mountains: Savage Dual-Fang Path',
+    startingLocation: 'Spider Mountain Foothills',
+    prologueCutsceneId: 'cs_inosuke_opening',
+    rivalBossName: 'Doma · Upper Rank Two',
+    canonPartnerText: 'Kanao Tsuyuri, Tanjiro & Zenitsu',
+  },
+  kanao: {
+    characterId: 'kanao',
+    campaignTitle: 'Vermilion Eye: Butterfly Inheritance',
+    startingLocation: 'Butterfly Estate & Mt. Fujikasane',
+    prologueCutsceneId: 'cs_kanao_opening',
+    rivalBossName: 'Doma · Upper Rank Two',
+    canonPartnerText: 'Inosuke Hashibira & Shinobu Kocho',
+  },
+  genya: {
+    characterId: 'genya',
+    campaignTitle: 'Scarred Resolve: Demon-Eater Brotherhood',
+    startingLocation: 'Mountain Training Gorge',
+    prologueCutsceneId: 'cs_genya_opening',
+    rivalBossName: 'Zohakuten & Kokushibo',
+    canonPartnerText: 'Sanemi Shinazugawa & Tanjiro Kamado',
+  },
+  basic_slayer: {
+    characterId: 'basic_slayer',
+    campaignTitle: 'Corps Vanguard: Steel Beneath the Moon',
+    startingLocation: 'Wisteria Gate Mountain Trail',
+    prologueCutsceneId: 'cs_opening',
+    rivalBossName: 'Rui & Muzan Kibutsuji',
+    canonPartnerText: 'Demon Slayer Corps & Hashira Pillars',
+  },
+  giyu: {
+    characterId: 'giyu',
+    campaignTitle: 'Water Hashira Chronicle: Dead Calm',
+    startingLocation: 'Snowy Mountain Pass',
+    prologueCutsceneId: 'cs_giyu_opening',
+    rivalBossName: 'Akaza · Upper Rank Three',
+    canonPartnerText: 'Tanjiro Kamado & Sanemi Shinazugawa',
+  },
+  rengoku: {
+    characterId: 'rengoku',
+    campaignTitle: 'Flame Hashira Chronicle: Set Your Heart Ablaze',
+    startingLocation: 'Snowy Rail Pass & Mugen Approach',
+    prologueCutsceneId: 'cs_rengoku_opening',
+    rivalBossName: 'Enmu & Akaza · Upper Three',
+    canonPartnerText: 'Tanjiro, Zenitsu & Inosuke',
+  },
+  shinobu: {
+    characterId: 'shinobu',
+    campaignTitle: 'Insect Hashira Chronicle: Wisteria Vengeance',
+    startingLocation: 'Spider Mountain Poisoned Canopy',
+    prologueCutsceneId: 'cs_shinobu_opening',
+    rivalBossName: 'Doma · Upper Rank Two',
+    canonPartnerText: 'Kanao Tsuyuri & Giyu Tomioka',
+  },
+  tengen: {
+    characterId: 'tengen',
+    campaignTitle: 'Sound Hashira Chronicle: Flamboyant Score',
+    startingLocation: 'Yoshiwara Lantern Alleys',
+    prologueCutsceneId: 'cs_tengen_opening',
+    rivalBossName: 'Gyutaro & Daki · Upper Six',
+    canonPartnerText: 'Tanjiro, Zenitsu & Inosuke',
+  },
+  muichiro: {
+    characterId: 'muichiro',
+    campaignTitle: 'Mist Hashira Chronicle: Memories Beyond Haze',
+    startingLocation: 'Swordsmith Village Hot Spring Trail',
+    prologueCutsceneId: 'cs_muichiro_opening',
+    rivalBossName: 'Gyokko & Kokushibo',
+    canonPartnerText: 'Sanemi, Gyomei & Genya',
+  },
+  mitsuri: {
+    characterId: 'mitsuri',
+    campaignTitle: 'Love Hashira Chronicle: Unyielding Ribbon',
+    startingLocation: 'Swordsmith Village Bridge',
+    prologueCutsceneId: 'cs_mitsuri_opening',
+    rivalBossName: 'Zohakuten & Nakime',
+    canonPartnerText: 'Obanai Iguro & Tanjiro Kamado',
+  },
+  obanai: {
+    characterId: 'obanai',
+    campaignTitle: 'Serpent Hashira Chronicle: Twisting Crimson',
+    startingLocation: 'Dark Forest Ruins & Hashira Estate',
+    prologueCutsceneId: 'cs_obanai_opening',
+    rivalBossName: 'Nakime & Muzan Final Form',
+    canonPartnerText: 'Mitsuri Kanroji & Tanjiro Kamado',
+  },
+  sanemi: {
+    characterId: 'sanemi',
+    campaignTitle: 'Wind Hashira Chronicle: Tempest of Scars',
+    startingLocation: 'Moonlit Bamboo Gorge',
+    prologueCutsceneId: 'cs_sanemi_opening',
+    rivalBossName: 'Kokushibo · Upper Rank One',
+    canonPartnerText: 'Gyomei Himejima & Genya Shinazugawa',
+  },
+  gyomei: {
+    characterId: 'gyomei',
+    campaignTitle: 'Stone Hashira Chronicle: Tectonic Prayer',
+    startingLocation: 'Abandoned Temple Sanctum',
+    prologueCutsceneId: 'cs_gyomei_opening',
+    rivalBossName: 'Kokushibo & Muzan Final Form',
+    canonPartnerText: 'Sanemi Shinazugawa & Muichiro Tokito',
+  },
+};
+
+export function getCharacterCampaignInfo(charId: string): CharacterCampaignSummary {
+  return CHARACTER_CAMPAIGN_INFO[charId] ?? CHARACTER_CAMPAIGN_INFO.tanjiro;
+}
+
+const campaignCache = new Map<string, StoryLevelDef[]>();
+
+/**
+ * Generates an independent 50-level campaign tailored specifically to each playable character:
+ * distinct Level 1 starting mission/location, character-accurate team allies, canon Upper Moon matchups,
+ * and unique narrative briefings.
+ */
+export function getCampaignForCharacter(charId: string): StoryLevelDef[] {
+  if (charId === 'tanjiro') return STORY_LEVELS;
+  const cached = campaignCache.get(charId);
+  if (cached) return cached;
+
+  const charDef = getCharacterById(charId);
+  const firstName = charDef.name.split(' ')[0];
+
+  const customLevels = STORY_LEVELS.map((lvl) => {
+    let title = lvl.title;
+    let mapId = lvl.mapId;
+    let intro = lvl.intro;
+    let enemies = lvl.enemies.map((e) => ({ ...e }));
+    let allyIds = lvl.allyIds ? [...lvl.allyIds] : undefined;
+    let cutsceneId = lvl.cutsceneId;
+
+    // Distinct Level 1 Starting Point & Mission per character!
+    if (lvl.id === 1) {
+      if (charId === 'zenitsu') {
+        title = 'Trembling Steps in the Dark Woods';
+        mapId = 'dark_forest';
+        enemies = [{ archetype: 'tongue_demon', name: 'Tsuzumi Stalker', subtitle: 'Mansion Prowler' }];
+        intro = 'Alone on a midnight mission, Zenitsu must steady his breath and unleash Thunderclap and Flash!';
+        cutsceneId = 'cs_zenitsu_opening';
+      } else if (charId === 'inosuke') {
+        title = 'Mountain Charge: Beast’s First Prey';
+        mapId = 'mountain_training';
+        enemies = [{ archetype: 'horned_demon', name: 'Horned Brute', subtitle: 'Mountain Challenger' }];
+        intro = 'Bursting off the mountain slopes, Inosuke races ahead to prove his serrated fangs against horned demons!';
+        cutsceneId = 'cs_inosuke_opening';
+      } else if (charId === 'kanao') {
+        title = 'Quiet Blade at Fujikasane';
+        mapId = 'abandoned_temple';
+        enemies = [{ archetype: 'spider_sister_main', name: 'Night Web Prowler', subtitle: 'Silk Ambush' }];
+        intro = 'Silent and observant, Kanao tracks demon scent trails through overgrown temple ruins.';
+        cutsceneId = 'cs_kanao_opening';
+      } else if (charId === 'genya') {
+        title = 'Buckshot Baptism on the Gorge';
+        mapId = 'mountain_training';
+        enemies = [{ archetype: 'swamp_demon', name: 'Gorge Ambush Demon', subtitle: 'Abyssal Lurker' }];
+        intro = 'Armed with a sawed-off Nichirin shotgun and unyielding grit, Genya hunts his first nocturnal demon.';
+        cutsceneId = 'cs_genya_opening';
+      } else if (charId === 'giyu') {
+        title = 'Snowy Ridge Patrol';
+        mapId = 'snowy_mountain';
+        enemies = [{ archetype: 'fast', name: 'Frost Predator', subtitle: 'Mountain Lurker' }];
+        intro = 'As Water Hashira, Giyu patrols the freezing mountain pass where tragedy struck the Kamado family.';
+        cutsceneId = 'cs_giyu_opening';
+      } else if (charId === 'rengoku') {
+        title = 'Blazing Track Through the Frost';
+        mapId = 'snowy_mountain';
+        enemies = [{ archetype: 'slasher', name: 'Phantom Rail Ripper', subtitle: 'Night Ambush' }];
+        intro = 'Kyojuro Rengoku ignites the snowy night defending travelers from high-speed demon predators!';
+        cutsceneId = 'cs_rengoku_opening';
+      } else if (charId === 'shinobu') {
+        title = 'Wisteria Sting in Spider Woods';
+        mapId = 'spider_mountain';
+        enemies = [{ archetype: 'spider_mother_main', name: 'Brood Weaver', subtitle: 'Spider Mountain Scout' }];
+        intro = 'Shinobu glides across the webbed forest, testing lethal wisteria toxins against demon nests.';
+        cutsceneId = 'cs_shinobu_opening';
+      } else if (charId === 'tengen') {
+        title = 'Lantern Shadow Investigation';
+        mapId = 'entertainment_district';
+        enemies = [{ archetype: 'muzan_female', name: 'Yoshiwara Spy', subtitle: 'Obi Servant' }];
+        intro = 'Tengen Uzui infiltrates the crimson alleys with flamboyant dual cleavers to expose Upper Moon Six.';
+        cutsceneId = 'cs_tengen_opening';
+      } else if (charId === 'muichiro') {
+        title = 'Misty Trail to the Forge';
+        mapId = 'swordsmith_village';
+        enemies = [{ archetype: 'karaku', name: 'Misty Forest Ambush', subtitle: 'Demon Infiltrator' }];
+        intro = 'Shrouded in haze, young Mist Hashira Muichiro protects the concealed paths toward Swordsmith Village.';
+        cutsceneId = 'cs_muichiro_opening';
+      } else if (charId === 'mitsuri') {
+        title = 'Bridge Guardian of Swordsmith Town';
+        mapId = 'swordsmith_village';
+        enemies = [{ archetype: 'urogi', name: 'Sky Talons', subtitle: 'Village Raider' }];
+        intro = 'Mitsuri leaps across hot-spring bridges with her whip katana to shield innocent artisans.';
+        cutsceneId = 'cs_mitsuri_opening';
+      } else if (charId === 'obanai') {
+        title = 'Coils Beneath the Dead Trees';
+        mapId = 'dark_forest';
+        enemies = [{ archetype: 'swamp_demon', name: 'Serpent Quarry', subtitle: 'Tunneling Demon' }];
+        intro = 'Obanai tracks elusive blood scents across twisted woodland hollows with Serpent Breathing.';
+        cutsceneId = 'cs_obanai_opening';
+      } else if (charId === 'sanemi') {
+        title = 'Tempest Hunter in Bamboo Night';
+        mapId = 'bamboo_forest';
+        enemies = [{ archetype: 'horned_demon', name: 'Crimson Horned Demon', subtitle: 'Night Marauder' }];
+        intro = 'Wind Hashira Sanemi cuts a furious swath through forest marauders before tracking Upper Moon One.';
+        cutsceneId = 'cs_sanemi_opening';
+      } else if (charId === 'gyomei') {
+        title = 'Iron Chains at the Sanctuary';
+        mapId = 'abandoned_temple';
+        enemies = [{ archetype: 'strong', name: 'Temple Ravager', subtitle: 'Brute Demon' }];
+        intro = 'Stone Hashira Gyomei stands before ancient shrines, swinging his chained flail against towering fiends.';
+        cutsceneId = 'cs_gyomei_opening';
+      }
+    }
+
+    // Canon Team Pairings dynamically anchored around who the player controls!
+    if (lvl.id === 14 && charId !== 'tanjiro') {
+      allyIds = ['tanjiro', 'nezuko_ally'];
+      intro = `${firstName} reinforces Tanjiro and Nezuko on Mt. Natagumo as Rui unleashes razor-sharp blood threads!`;
+    } else if (lvl.id === 20) {
+      const districtSquad = ['tanjiro', 'zenitsu', 'inosuke', 'tengen'].filter((id) => id !== charId);
+      allyIds = districtSquad.slice(0, 3);
+      intro = `${firstName} fights side-by-side with ${allyIds.map((id) => getCharacterById(id).name.split(' ')[0]).join(', ')} against both Gyutaro and Daki!`;
+    } else if (lvl.id === 41 && charId === 'zenitsu') {
+      title = 'Zenitsu vs Kaigaku: Seventh Form Awakening';
+      allyIds = undefined;
+      intro = 'Face your former senior disciple alone inside the shifting foyer—unleash Flaming Thunder God!';
+    } else if (lvl.id === 42) {
+      allyIds = charId === 'obanai' ? ['mitsuri'] : charId === 'mitsuri' ? ['obanai'] : ['obanai', 'mitsuri'];
+    } else if (lvl.id === 43 || lvl.id === 44) {
+      // Canon Tanjiro + Giyu vs Akaza
+      allyIds = charId === 'giyu' ? ['tanjiro'] : charId === 'tanjiro' ? ['giyu'] : ['tanjiro', 'giyu'];
+      title = lvl.id === 43 ? 'Akaza Clash: Tanjiro & Giyu' : 'Final Akaza: Selfless State';
+      intro = `Alongside ${allyIds.map((id) => getCharacterById(id).name.split(' ')[0]).join(' and ')}, confront Upper Rank Three Akaza’s Destructive Death martial arts!`;
+    } else if (lvl.id === 45 || lvl.id === 46) {
+      // Canon Kanao + Inosuke vs Doma
+      allyIds = charId === 'kanao' ? ['inosuke'] : charId === 'inosuke' ? ['kanao'] : ['kanao', 'inosuke'];
+      title = lvl.id === 45 ? 'Doma Frost Hall: Kanao & Inosuke' : 'Final Doma: Ice Lotus & Bodhisattva';
+      intro = `Fight with ${allyIds.map((id) => getCharacterById(id).name.split(' ')[0]).join(' and ')} to shatter Doma’s Cryo Clones and Rime Bodhisattva!`;
+    } else if (lvl.id === 47 || lvl.id === 48) {
+      // Canon Sanemi + Gyomei (+ Muichiro / Genya) vs Kokushibo
+      const kokuSquad = ['sanemi', 'gyomei', 'muichiro', 'genya'].filter((id) => id !== charId);
+      allyIds = kokuSquad.slice(0, 3);
+      title = lvl.id === 47 ? 'Kokushibo Duel: Sanemi & Gyomei' : 'Final Kokushibo: Red Blade Pinnacle';
+      intro = `Unite with ${allyIds.map((id) => getCharacterById(id).name.split(' ')[0]).join(', ')} against six-eyed Upper Rank One Kokushibo!`;
+    } else if (lvl.id === 50) {
+      const finalePool = ['tanjiro', 'giyu', 'sanemi', 'gyomei', 'obanai'].filter((id) => id !== charId);
+      allyIds = finalePool.slice(0, 3);
+    }
+
+    return {
+      ...lvl,
+      title,
+      mapId,
+      intro,
+      enemies,
+      allyIds,
+      allyHashiraIds: allyIds,
+      cutsceneId,
+    };
+  });
+
+  campaignCache.set(charId, customLevels);
+  return customLevels;
+}
+
+export function getLevelById(id: number, charId = 'tanjiro'): StoryLevelDef {
+  const list = getCampaignForCharacter(charId);
+  return list.find((l) => l.id === id) ?? list[0];
 }
 
 export function getRouteLevelBriefing(
   level: StoryLevelDef,
-  routeId: StoryRouteId
+  routeId: StoryRouteId,
+  charId?: string
 ): { routeLabel: string; routeIntro: string; routeObjective: string } {
+  const info = charId ? getCharacterCampaignInfo(charId) : null;
+  if (info) {
+    return {
+      routeLabel: info.campaignTitle,
+      routeObjective: level.objectiveText,
+      routeIntro: level.intro,
+    };
+  }
   if (routeId === 'zenitsu') {
     return {
       routeLabel: 'Zenitsu · Lightning Path',
-      routeObjective: level.isBossLevel
-        ? `Thunderclap Blitz: ${level.objectiveText}`
-        : `High-Speed Purge: ${level.objectiveText}`,
-      routeIntro:
-        level.chapter === 5
-          ? 'Even inside the shifting Infinity Castle, Zenitsu steadies his breath for a godlike flash against Upper Moon wrath.'
-          : `${level.intro} Zenitsu relies on blistering Thunder Breathing dashes and fast counter strikes.`,
-    };
-  }
-  if (routeId === 'inosuke') {
-    return {
-      routeLabel: 'Inosuke · Mountain Beast Path',
-      routeObjective: `Ferocious Assault: ${level.objectiveText}`,
-      routeIntro:
-        level.chapter === 2
-          ? 'Inosuke charges headfirst into Spider Mountain, tearing through webs and armored demon carapaces alike.'
-          : `${level.intro} Crush enemy guards with relentless Beast Breathing pressure.`,
-    };
-  }
-  if (routeId === 'kanao') {
-    return {
-      routeLabel: 'Kanao · Vermilion Eye Path',
-      routeObjective: `Precision Counter: ${level.objectiveText}`,
-      routeIntro:
-        level.chapter === 5
-          ? 'Inside the frost chamber, Kanao sharpens her Vermilion Eye vision to track every lotus and fan strike.'
-          : `${level.intro} Time blocks and dodge counters to punish openings cleanly.`,
-    };
-  }
-  if (routeId === 'genya') {
-    return {
-      routeLabel: 'Genya · Demon-Eater Path',
-      routeObjective: `Buckshot & Steel: ${level.objectiveText}`,
-      routeIntro:
-        level.chapter === 3
-          ? 'Alongside the Hashira, Genya unleashes Nichirin shotgun blasts on heavy strikes to stagger Upper Ranks.'
-          : `${level.intro} Combine heavy Nichirin buckshot blasts with tough close-range slashes.`,
-    };
-  }
-  if (routeId === 'hashira') {
-    return {
-      routeLabel: 'Hashira Vanguard Route',
-      routeObjective: `Pillar Command: ${level.objectiveText}`,
-      routeIntro: `${level.intro} Fight as a Pillar of the Demon Slayer Corps with elite breathing flow.`,
+      routeObjective: level.objectiveText,
+      routeIntro: level.intro,
     };
   }
   return {
     routeLabel: 'Tanjiro · Sun & Water Path',
     routeObjective: level.objectiveText,
-    routeIntro:
-      level.id === 50
-        ? 'With every memory of the Corps burning in your blade, unleash Hinokami Kagura beside the Hashira to end Muzan!'
-        : level.intro,
+    routeIntro: level.intro,
   };
 }
 
-// Animated Cinematic Cutscene Catalog (driven by real 60 FPS Canvas skeletal choreography)
+// Animated Cinematic Cutscene Catalog (automatic within campaigns)
 export const CUTSCENES: Record<string, CutsceneDef> = {
   cs_opening: {
     id: 'cs_opening',
     title: 'Prologue: Night of the Crimson Blade',
-    mapId: 'snowy_mountain',
+    mapId: 'bamboo_forest',
     beats: [
       {
         duration: 2.8,
-        cameraX: 600,
-        cameraZoom: 1.05,
+        cameraX: 640,
+        cameraZoom: 1.06,
         lightingMood: 'moonlit',
-        subtitle: 'Under the frozen peaks of Mt. Sagiri, the Corps prepares for the long night.',
+        subtitle: 'Under the towering bamboo forest, Total Concentration awakens.',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 740, facing: 1, action: 'walk', bubbleText: 'One more swing before dawn!' },
-          { id: 'ally1', role: 'ally', characterId: 'zenitsu', name: 'Zenitsu', x: 960, facing: -1, action: 'idle', bubbleText: 'Must we really fight in this cold?!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 740, facing: 1, action: 'walk', emotion: 'determined', bubbleText: 'One more step before dawn—keep breathing!' },
+          { id: 'ally1', role: 'ally', characterId: 'zenitsu', name: 'Zenitsu', x: 960, facing: -1, action: 'idle', emotion: 'fear', bubbleText: 'These woods stretch on forever!' },
         ],
       },
       {
         duration: 2.8,
-        cameraX: 780,
-        cameraZoom: 1.18,
+        cameraX: 800,
+        cameraZoom: 1.2,
         lightingMood: 'mist',
         fxKind: 'breathing',
         fxColor: '#38bdf8',
-        subtitle: 'Total Concentration Breathing awakens within the Nichirin steel.',
+        subtitle: 'Nichirin steel hums beneath the silver moonlight.',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 860, facing: 1, action: 'breathing', bubbleText: 'Total Concentration — Draw!' },
-          { id: 'ally1', role: 'hashira', characterId: 'giyu', name: 'Giyu', x: 1080, facing: -1, action: 'block', bubbleText: 'Keep your wrist steady.' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 860, facing: 1, action: 'breathing', emotion: 'fierce', bubbleText: 'Total Concentration — Draw!' },
+          { id: 'ally1', role: 'hashira', characterId: 'giyu', name: 'Giyu', x: 1080, facing: -1, action: 'block', emotion: 'calm', bubbleText: 'Follow your breath across the valley.' },
         ],
       },
     ],
@@ -429,8 +698,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         cameraZoom: 1.08,
         lightingMood: 'mist',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 840, facing: 1, action: 'run', bubbleText: 'I must sever this boulder!' },
-          { id: 'mentor', role: 'mentor', characterId: 'giyu', name: 'Sabito', x: 1090, facing: -1, action: 'idle', bubbleText: 'Strike cleanly—no hesitation!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 840, facing: 1, action: 'run', emotion: 'determined', bubbleText: 'I must sever this boulder!' },
+          { id: 'mentor', role: 'mentor', characterId: 'giyu', name: 'Sabito', x: 1090, facing: -1, action: 'idle', emotion: 'calm', bubbleText: 'Strike cleanly—no hesitation!' },
         ],
       },
       {
@@ -443,8 +712,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxColor: '#38bdf8',
         subtitle: 'A single true Breathing cleave splits solid stone.',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 980, facing: 1, action: 'heavy', bubbleText: 'CLEAVE!' },
-          { id: 'mentor', role: 'mentor', characterId: 'giyu', name: 'Sabito', x: 1120, facing: -1, action: 'idle', bubbleText: 'Well struck. Final Selection awaits.' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 980, facing: 1, action: 'heavy', emotion: 'fierce', bubbleText: 'CLEAVE!' },
+          { id: 'mentor', role: 'mentor', characterId: 'giyu', name: 'Sabito', x: 1120, facing: -1, action: 'idle', emotion: 'calm', bubbleText: 'Well struck. Final Selection awaits.' },
         ],
       },
     ],
@@ -460,8 +729,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         cameraZoom: 1.06,
         lightingMood: 'moonlit',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 760, facing: 1, action: 'walk' },
-          { id: 'enemy', role: 'demon', demonArchetype: 'temple_demon', name: 'Temple Demon', x: 1140, facing: -1, action: 'run', bubbleText: 'Fresh meat in a Corps coat!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 760, facing: 1, action: 'walk', emotion: 'determined' },
+          { id: 'enemy', role: 'demon', demonArchetype: 'temple_demon', name: 'Temple Demon', x: 1140, facing: -1, action: 'run', emotion: 'rage', bubbleText: 'Fresh meat in a Corps coat!' },
         ],
       },
       {
@@ -473,8 +742,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxKind: 'clash',
         fxColor: '#f43f5e',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 920, facing: 1, action: 'slash', bubbleText: 'Stay back! Ready the blade!' },
-          { id: 'enemy', role: 'demon', demonArchetype: 'temple_demon', name: 'Temple Demon', x: 1020, facing: -1, action: 'bda', bubbleText: 'GRAAAH!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 920, facing: 1, action: 'slash', emotion: 'fierce', bubbleText: 'Stay back! Ready the blade!' },
+          { id: 'enemy', role: 'demon', demonArchetype: 'temple_demon', name: 'Temple Demon', x: 1020, facing: -1, action: 'bda', emotion: 'rage', bubbleText: 'GRAAAH!' },
         ],
       },
     ],
@@ -491,8 +760,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         shake: 10,
         lightingMood: 'crimson',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 780, facing: 1, action: 'block', bubbleText: 'That towering shape... Urokodaki’s warning!' },
-          { id: 'enemy', role: 'demon', demonArchetype: 'boss_hand', name: 'Hand Demon', x: 1120, facing: -1, action: 'heavy', bubbleText: 'Another fox mask?! Come die!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 780, facing: 1, action: 'block', emotion: 'shock', bubbleText: 'That towering shape... Urokodaki’s warning!' },
+          { id: 'enemy', role: 'demon', demonArchetype: 'boss_hand', name: 'Hand Demon', x: 1120, facing: -1, action: 'heavy', emotion: 'rage', bubbleText: 'Another fox mask?! Come die!' },
         ],
       },
       {
@@ -503,8 +772,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxKind: 'breathing',
         fxColor: '#38bdf8',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 860, facing: 1, action: 'breathing', bubbleText: 'For Sabito and Makomo—I strike!' },
-          { id: 'enemy', role: 'demon', demonArchetype: 'boss_hand', name: 'Hand Demon', x: 1090, facing: -1, action: 'bda' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 860, facing: 1, action: 'breathing', emotion: 'fierce', bubbleText: 'For Sabito and Makomo—I strike!' },
+          { id: 'enemy', role: 'demon', demonArchetype: 'boss_hand', name: 'Hand Demon', x: 1090, facing: -1, action: 'bda', emotion: 'rage' },
         ],
       },
     ],
@@ -522,8 +791,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxKind: 'bda',
         fxColor: '#f43f5e',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 760, facing: 1, action: 'dodge', bubbleText: 'The forest is laced with razor threads!' },
-          { id: 'enemy', role: 'demon', demonArchetype: 'boss_rui', name: 'Rui · Lower Five', x: 1120, facing: -1, action: 'bda', bubbleText: 'Do not disturb my family.' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 760, facing: 1, action: 'dodge', emotion: 'shock', bubbleText: 'The forest is laced with razor threads!' },
+          { id: 'enemy', role: 'demon', demonArchetype: 'boss_rui', name: 'Rui · Lower Five', x: 1120, facing: -1, action: 'bda', emotion: 'calm', bubbleText: 'Do not disturb my family.' },
         ],
       },
       {
@@ -535,8 +804,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxKind: 'breathing',
         fxColor: '#f97316',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 920, facing: 1, action: 'breathing', bubbleText: 'Cut the web apart!' },
-          { id: 'enemy', role: 'demon', demonArchetype: 'boss_rui', name: 'Rui · Lower Five', x: 1080, facing: -1, action: 'block' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 920, facing: 1, action: 'breathing', emotion: 'fierce', bubbleText: 'Cut the web apart!' },
+          { id: 'enemy', role: 'demon', demonArchetype: 'boss_rui', name: 'Rui · Lower Five', x: 1080, facing: -1, action: 'block', emotion: 'rage' },
         ],
       },
     ],
@@ -552,22 +821,23 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         cameraZoom: 1.08,
         lightingMood: 'crimson',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 740, facing: 1, action: 'run' },
-          { id: 'uzui', role: 'hashira', characterId: 'tengen', name: 'Tengen Uzui', x: 890, facing: 1, action: 'slash', bubbleText: 'Watch his poisoned blood sickles!' },
-          { id: 'enemy', role: 'demon', demonArchetype: 'gyutaro', name: 'Gyutaro · Upper Six', x: 1160, facing: -1, action: 'bda', bubbleText: 'Heh... Come dance in the flames!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 720, facing: 1, action: 'run', emotion: 'determined' },
+          { id: 'uzui', role: 'hashira', characterId: 'tengen', name: 'Tengen Uzui', x: 870, facing: 1, action: 'slash', emotion: 'fierce', bubbleText: 'Watch his poisoned blood sickles!' },
+          { id: 'enemy', role: 'demon', demonArchetype: 'gyutaro', name: 'Gyutaro · Upper Six', x: 1140, facing: -1, action: 'bda', emotion: 'rage', bubbleText: 'Heh... Come dance in the flames!' },
         ],
       },
       {
         duration: 2.4,
-        cameraX: 890,
+        cameraX: 900,
         cameraZoom: 1.22,
         shake: 12,
         lightingMood: 'crimson',
         fxKind: 'clash',
         fxColor: '#fbbf24',
         actors: [
-          { id: 'uzui', role: 'hashira', characterId: 'tengen', name: 'Tengen Uzui', x: 980, facing: 1, action: 'heavy', bubbleText: 'Let’s make this flamboyant!' },
-          { id: 'enemy', role: 'demon', demonArchetype: 'gyutaro', name: 'Gyutaro · Upper Six', x: 1100, facing: -1, action: 'slash' },
+          { id: 'uzui', role: 'hashira', characterId: 'tengen', name: 'Tengen Uzui', x: 970, facing: 1, action: 'heavy', emotion: 'fierce', bubbleText: 'Let’s make this flamboyant!' },
+          { id: 'enemy', role: 'demon', demonArchetype: 'gyutaro', name: 'Gyutaro · Upper Six', x: 1090, facing: -1, action: 'slash', emotion: 'rage' },
+          { id: 'daki', role: 'demon', demonArchetype: 'daki_awakened', name: 'Daki · Upper Six', x: 1190, facing: -1, action: 'bda', emotion: 'rage' },
         ],
       },
     ],
@@ -585,8 +855,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxKind: 'bda',
         fxColor: '#facc15',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 780, facing: 1, action: 'block', bubbleText: 'Demons inside the hidden forge!' },
-          { id: 'enemy', role: 'demon', demonArchetype: 'sekido', name: 'Sekido', x: 1120, facing: -1, action: 'bda', bubbleText: 'Die beneath crimson lightning!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 780, facing: 1, action: 'block', emotion: 'shock', bubbleText: 'Demons inside the hidden forge!' },
+          { id: 'enemy', role: 'demon', demonArchetype: 'sekido', name: 'Sekido', x: 1120, facing: -1, action: 'bda', emotion: 'rage', bubbleText: 'Die beneath crimson lightning!' },
         ],
       },
       {
@@ -597,8 +867,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxKind: 'breathing',
         fxColor: '#f43f5e',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 910, facing: 1, action: 'breathing', bubbleText: 'Protect the swordsmiths!' },
-          { id: 'enemy2', role: 'demon', demonArchetype: 'gyokko', name: 'Gyokko', x: 1150, facing: -1, action: 'idle', bubbleText: 'Witness my glorious porcelain art!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 910, facing: 1, action: 'breathing', emotion: 'fierce', bubbleText: 'Protect the swordsmiths!' },
+          { id: 'enemy2', role: 'demon', demonArchetype: 'gyokko', name: 'Gyokko', x: 1150, facing: -1, action: 'idle', emotion: 'calm', bubbleText: 'Witness my glorious porcelain art!' },
         ],
       },
     ],
@@ -614,9 +884,9 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         cameraZoom: 1.04,
         lightingMood: 'dawn',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 740, facing: 1, action: 'idle' },
-          { id: 'giyu', role: 'hashira', characterId: 'giyu', name: 'Giyu', x: 960, facing: -1, action: 'idle', bubbleText: 'Every Pillar sharpens their blade.' },
-          { id: 'rengoku', role: 'hashira', characterId: 'rengoku', name: 'Rengoku', x: 1120, facing: -1, action: 'breathing', bubbleText: 'Set your heart ablaze!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 740, facing: 1, action: 'idle', emotion: 'determined' },
+          { id: 'giyu', role: 'hashira', characterId: 'giyu', name: 'Giyu', x: 960, facing: -1, action: 'idle', emotion: 'calm', bubbleText: 'Every Pillar sharpens their blade.' },
+          { id: 'sanemi', role: 'hashira', characterId: 'sanemi', name: 'Sanemi', x: 1120, facing: -1, action: 'breathing', emotion: 'fierce', bubbleText: 'Show us if you can survive Hashira training!' },
         ],
       },
     ],
@@ -636,8 +906,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxColor: '#fbbf24',
         subtitle: 'A single Biwa chord drops the Demon Slayer Corps into Muzan’s shifting abyss.',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 760, facing: 1, action: 'jump', bubbleText: 'The floor vanished—it’s the Infinity Castle!' },
-          { id: 'nakime', role: 'demon', demonArchetype: 'boss_nakime', name: 'Nakime', x: 1140, facing: -1, action: 'bda', bubbleText: 'Welcome to the Demon King’s domain.' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 760, facing: 1, action: 'jump', emotion: 'shock', bubbleText: 'The floor vanished—it’s the Infinity Castle!' },
+          { id: 'nakime', role: 'demon', demonArchetype: 'boss_nakime', name: 'Nakime', x: 1140, facing: -1, action: 'bda', emotion: 'calm', bubbleText: 'Welcome to the Demon King’s domain.' },
         ],
       },
       {
@@ -648,15 +918,15 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxKind: 'transform',
         fxColor: '#f43f5e',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 840, facing: 1, action: 'slash', bubbleText: 'Muzan Kibutsuji!!' },
-          { id: 'muzan', role: 'demon', demonArchetype: 'boss_muzan', name: 'Muzan Kibutsuji', x: 1120, facing: -1, action: 'transform', bubbleText: 'None of you leave here alive.' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 840, facing: 1, action: 'slash', emotion: 'fierce', bubbleText: 'Muzan Kibutsuji!!' },
+          { id: 'muzan', role: 'demon', demonArchetype: 'boss_muzan', name: 'Muzan Kibutsuji', x: 1120, facing: -1, action: 'transform', emotion: 'rage', bubbleText: 'None of you leave here alive.' },
         ],
       },
     ],
   },
   cs_akaza_duel: {
     id: 'cs_akaza_duel',
-    title: 'Compass Needle Awakens',
+    title: 'Compass Needle Awakens: Tanjiro & Giyu vs Akaza',
     mapId: 'infinity_castle',
     beats: [
       {
@@ -667,60 +937,63 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxKind: 'bda',
         fxColor: '#38bdf8',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 800, facing: 1, action: 'block', bubbleText: 'Here he comes—Upper Rank Three!' },
-          { id: 'akaza', role: 'demon', demonArchetype: 'boss_akaza', name: 'Akaza', x: 1120, facing: -1, action: 'bda', bubbleText: 'Technique Deployment: Compass Needle!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 750, facing: 1, action: 'block', emotion: 'fierce', bubbleText: 'Akaza! We won’t let you pass!' },
+          { id: 'giyu', role: 'hashira', characterId: 'giyu', name: 'Giyu', x: 870, facing: 1, action: 'breathing', emotion: 'calm', bubbleText: 'Eleventh Form: Dead Calm.' },
+          { id: 'akaza', role: 'demon', demonArchetype: 'boss_akaza', name: 'Akaza', x: 1130, facing: -1, action: 'bda', emotion: 'fierce', bubbleText: 'Technique Deployment: Compass Needle!' },
         ],
       },
       {
         duration: 2.3,
-        cameraX: 860,
+        cameraX: 890,
         cameraZoom: 1.24,
         shake: 12,
         lightingMood: 'crimson',
         fxKind: 'clash',
         fxColor: '#38bdf8',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 920, facing: 1, action: 'slash', bubbleText: 'Show me your martial arts!' },
-          { id: 'akaza', role: 'demon', demonArchetype: 'boss_akaza', name: 'Akaza', x: 1040, facing: -1, action: 'heavy' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 920, facing: 1, action: 'slash', emotion: 'fierce', bubbleText: 'Together, Tomioka-san!' },
+          { id: 'akaza', role: 'demon', demonArchetype: 'boss_akaza', name: 'Akaza', x: 1050, facing: -1, action: 'heavy', emotion: 'fierce' },
         ],
       },
     ],
   },
   cs_doma_duel: {
     id: 'cs_doma_duel',
-    title: 'Lotus Chamber of Frost',
+    title: 'Lotus Chamber of Frost: Kanao & Inosuke vs Doma',
     mapId: 'infinity_castle',
     beats: [
       {
-        duration: 2.6,
-        cameraX: 780,
+        duration: 2.8,
+        cameraX: 800,
         cameraZoom: 1.12,
         lightingMood: 'mist',
         fxKind: 'bda',
         fxColor: '#7dd3fc',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'kanao', name: 'Kanao', x: 780, facing: 1, action: 'run', bubbleText: 'Do not breathe the frost dust!' },
-          { id: 'doma', role: 'demon', demonArchetype: 'boss_doma', name: 'Doma · Upper Two', x: 1130, facing: -1, action: 'bda', bubbleText: 'Care to dance amidst freezing lotuses?' },
+          { id: 'kanao_a', role: 'slayer', characterId: 'kanao', name: 'Kanao', x: 750, facing: 1, action: 'run', emotion: 'fierce', bubbleText: 'Do not breathe the frost dust!' },
+          { id: 'inosuke_a', role: 'ally', characterId: 'inosuke', name: 'Inosuke', x: 875, facing: 1, action: 'slash', emotion: 'rage', bubbleText: 'Step aside! I’ll shred his golden fans!' },
+          { id: 'doma', role: 'demon', demonArchetype: 'boss_doma', name: 'Doma · Upper Two', x: 1140, facing: -1, action: 'bda', emotion: 'calm', bubbleText: 'Care to dance amidst freezing lotuses?' },
         ],
       },
     ],
   },
   cs_kokushibo_duel: {
     id: 'cs_kokushibo_duel',
-    title: 'Eclipse of Six Eyes',
+    title: 'Eclipse of Six Eyes: Sanemi & Gyomei vs Kokushibo',
     mapId: 'infinity_castle',
     beats: [
       {
         duration: 2.8,
-        cameraX: 800,
+        cameraX: 820,
         cameraZoom: 1.15,
         shake: 10,
         lightingMood: 'castle_gold',
         fxKind: 'clash',
         fxColor: '#c084fc',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'gyomei', name: 'Gyomei', x: 790, facing: 1, action: 'heavy', bubbleText: 'Stay sharp—his Moon Breathing reaches everywhere!' },
-          { id: 'koku', role: 'demon', demonArchetype: 'boss_kokushibo', name: 'Kokushibo · Upper One', x: 1130, facing: -1, action: 'slash', bubbleText: 'Show me the pinnacle of this era.' },
+          { id: 'gyomei_a', role: 'hashira', characterId: 'gyomei', name: 'Gyomei', x: 750, facing: 1, action: 'heavy', emotion: 'fierce', bubbleText: 'Stay together—his Moon Breathing reaches everywhere!' },
+          { id: 'sanemi_a', role: 'hashira', characterId: 'sanemi', name: 'Sanemi', x: 880, facing: 1, action: 'breathing', emotion: 'rage', bubbleText: 'Upper Moon One—taste Wind Breathing!' },
+          { id: 'koku', role: 'demon', demonArchetype: 'boss_kokushibo', name: 'Kokushibo · Upper One', x: 1150, facing: -1, action: 'slash', emotion: 'calm', bubbleText: 'Show me the pinnacle of this era.' },
         ],
       },
     ],
@@ -739,9 +1012,9 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxKind: 'transform',
         fxColor: '#f43f5e',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 760, facing: 1, action: 'breathing', bubbleText: 'Muzan ends tonight!' },
-          { id: 'giyu', role: 'hashira', characterId: 'giyu', name: 'Giyu', x: 870, facing: 1, action: 'slash', bubbleText: 'Hold the line!' },
-          { id: 'muzan', role: 'demon', demonArchetype: 'muzan_final', name: 'Muzan · Final Form', x: 1150, facing: -1, action: 'transform', bubbleText: 'Come and perish, Demon Slayers!' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 740, facing: 1, action: 'breathing', emotion: 'fierce', bubbleText: 'Muzan ends tonight!' },
+          { id: 'giyu', role: 'hashira', characterId: 'giyu', name: 'Giyu', x: 860, facing: 1, action: 'slash', emotion: 'determined', bubbleText: 'Hold the line until sunrise!' },
+          { id: 'muzan', role: 'demon', demonArchetype: 'muzan_final', name: 'Muzan · Final Form', x: 1150, facing: -1, action: 'transform', emotion: 'rage', bubbleText: 'Come and perish, Demon Slayers!' },
         ],
       },
       {
@@ -753,8 +1026,8 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxKind: 'clash',
         fxColor: '#f43f5e',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 920, facing: 1, action: 'heavy', bubbleText: 'HINOKAMI KAGURA!' },
-          { id: 'muzan', role: 'demon', demonArchetype: 'muzan_final', name: 'Muzan · Final Form', x: 1080, facing: -1, action: 'bda' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 920, facing: 1, action: 'heavy', emotion: 'fierce', bubbleText: 'HINOKAMI KAGURA!' },
+          { id: 'muzan', role: 'demon', demonArchetype: 'muzan_final', name: 'Muzan · Final Form', x: 1080, facing: -1, action: 'bda', emotion: 'rage' },
         ],
       },
     ],
@@ -765,7 +1038,7 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
     mapId: 'bamboo_forest',
     beats: [
       {
-        duration: 3.0,
+        duration: 3.2,
         cameraX: 780,
         cameraZoom: 1.05,
         lightingMood: 'dawn',
@@ -773,20 +1046,92 @@ export const CUTSCENES: Record<string, CutsceneDef> = {
         fxColor: '#fde047',
         subtitle: 'As golden morning rays pierce the sky, the Demon King turns to ash.',
         actors: [
-          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 860, facing: 1, action: 'idle', bubbleText: 'The sun... We survived till dawn!' },
-          { id: 'giyu', role: 'hashira', characterId: 'giyu', name: 'Giyu', x: 1050, facing: -1, action: 'idle', bubbleText: 'Rest well, Corps.' },
+          { id: 'hero', role: 'slayer', characterId: 'tanjiro', name: 'Tanjiro', x: 860, facing: 1, action: 'idle', emotion: 'calm', bubbleText: 'The sun... We survived till dawn!' },
+          { id: 'giyu', role: 'hashira', characterId: 'giyu', name: 'Giyu', x: 1050, facing: -1, action: 'idle', emotion: 'calm', bubbleText: 'Rest well, Demon Slayer Corps.' },
         ],
       },
     ],
   },
 };
 
+// Build tailored opening cutscenes per character dynamically when needed
+function makeCharacterOpeningCutscene(characterId: string): CutsceneDef {
+  const info = getCharacterCampaignInfo(characterId);
+  const charDef = getCharacterById(characterId);
+  const firstName = charDef.name.split(' ')[0];
+  const mapMap: Record<string, MapId> = {
+    zenitsu: 'dark_forest',
+    inosuke: 'mountain_training',
+    kanao: 'abandoned_temple',
+    genya: 'mountain_training',
+    giyu: 'snowy_mountain',
+    rengoku: 'snowy_mountain',
+    shinobu: 'spider_mountain',
+    tengen: 'entertainment_district',
+    muichiro: 'swordsmith_village',
+    mitsuri: 'swordsmith_village',
+    obanai: 'dark_forest',
+    sanemi: 'bamboo_forest',
+    gyomei: 'abandoned_temple',
+  };
+  const mapId = mapMap[characterId] ?? 'bamboo_forest';
+
+  const lineMap: Record<string, string> = {
+    zenitsu: 'Even if my knees shake... one Lightning strike is enough!',
+    inosuke: 'Outta my way! Lord Inosuke is hunting tonight!',
+    kanao: 'Shinobu-sama taught me to see every strike clearly.',
+    genya: 'I will grow strong enough for my brother to acknowledge me!',
+    giyu: 'Stay alert. Scent of demons lingers across this mountain pass.',
+    rengoku: 'Set your heart ablaze! No innocent soul falls on my watch!',
+    shinobu: 'Let us test a gentle dose of wisteria poison tonight.',
+    tengen: 'Time to tear this alley wide open in flamboyant style!',
+    muichiro: 'Where did that mist come from...? Ready my blade.',
+    mitsuri: 'Stay safe behind me—every Demon Slayer must protect the village!',
+    obanai: 'Sinuous precision leaves no demon an escape route.',
+    sanemi: 'Let every filthy demon step out under the moonlight and bleed!',
+    gyomei: 'Namu Amida Butsu... May my iron chains grant swift deliverance.',
+  };
+
+  return {
+    id: info.prologueCutsceneId,
+    title: info.campaignTitle,
+    mapId,
+    beats: [
+      {
+        duration: 2.6,
+        cameraX: 700,
+        cameraZoom: 1.08,
+        lightingMood: 'moonlit',
+        subtitle: `${info.campaignTitle} — ${info.startingLocation}`,
+        actors: [
+          {
+            id: 'hero',
+            role: 'slayer',
+            characterId: charDef.id,
+            name: firstName,
+            x: 820,
+            facing: 1,
+            action: 'breathing',
+            emotion: 'determined',
+            bubbleText: lineMap[characterId] ?? 'Total Concentration Breathing — Begin!',
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export function buildCutsceneForPlayer(
   cutsceneId: string,
   characterId: string,
   _breathing: BreathingStyleId
 ): CutsceneDef {
-  const base = CUTSCENES[cutsceneId] ?? CUTSCENES.cs_opening;
+  const customOpening =
+    cutsceneId.endsWith('_opening') && !CUTSCENES[cutsceneId]
+      ? makeCharacterOpeningCutscene(characterId)
+      : null;
+
+  const base = customOpening ?? CUTSCENES[cutsceneId] ?? CUTSCENES.cs_opening;
   const charDef = getCharacterById(characterId);
   const firstName = charDef.name.split(' ')[0];
 
@@ -798,16 +1143,18 @@ export function buildCutsceneForPlayer(
         if (actor.id !== 'hero') return actor;
         let bubble = actor.bubbleText;
         if (cutsceneId === 'cs_ending') {
-          if (charDef.routeId === 'zenitsu') {
+          if (characterId === 'zenitsu') {
             bubble = 'I actually survived Muzan?! The night is finally over!';
-          } else if (charDef.routeId === 'inosuke') {
+          } else if (characterId === 'inosuke') {
             bubble = 'King of the Mountains stands undefeated at dawn!';
-          } else if (charDef.routeId === 'kanao') {
+          } else if (characterId === 'kanao') {
             bubble = 'Everyone’s sacrifice brought this quiet sunrise.';
-          } else if (charDef.routeId === 'genya') {
-            bubble = 'We tore down the fortress together!';
-          } else if (charDef.routeId === 'hashira') {
-            bubble = 'Peace returns to every village under the sun.';
+          } else if (characterId === 'genya') {
+            bubble = 'Brother... we tore down the fortress together!';
+          } else if (characterId === 'sanemi') {
+            bubble = 'We finally dragged Muzan into the sun... rest in peace, everyone.';
+          } else if (charDef.isHashira) {
+            bubble = 'Peace returns to every village under the morning sun.';
           }
         }
         return {

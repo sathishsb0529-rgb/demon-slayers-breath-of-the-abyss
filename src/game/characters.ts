@@ -375,8 +375,8 @@ export const SLAYER_CHARACTERS: SlayerCharacterDef[] = [
     isHashira: true,
     difficulty: 'Hard',
     specialAbility: 'Relentless Gale Fury',
-    defaultBreathing: 'beast',
-    allowedBreathings: ['beast', 'flame', 'sun'],
+    defaultBreathing: 'wind',
+    allowedBreathings: ['wind', 'flame', 'sun'],
     weapon: 'katana',
     maxHp: 176,
     speedMult: 1.2,
@@ -391,7 +391,7 @@ export const SLAYER_CHARACTERS: SlayerCharacterDef[] = [
     scarfColor: '#34d399',
     eyeColor: '#a7f3d0',
     bladeColor: '#10b981',
-    description: 'Relentless scarred Hashira whose savage pressure shreds defenses.',
+    description: 'Relentless scarred Hashira whose savage Wind Breathing pressure shreds defenses.',
   },
   {
     id: 'gyomei',
@@ -423,8 +423,81 @@ export const SLAYER_CHARACTERS: SlayerCharacterDef[] = [
   },
 ];
 
+export const NEZUKO_ALLY_DEF: SlayerCharacterDef = {
+  id: 'nezuko_ally',
+  name: 'Nezuko Kamado',
+  title: 'Exploding Blood Protector',
+  routeId: 'tanjiro',
+  price: 0,
+  isStarterChoice: false,
+  isHashira: false,
+  difficulty: 'Normal',
+  specialAbility: 'Exploding Blood Kick & Regeneration',
+  defaultBreathing: 'flame',
+  allowedBreathings: ['flame'],
+  weapon: 'unarmed_claws',
+  maxHp: 170,
+  speedMult: 1.24,
+  damageMult: 1.26,
+  attackSpeedMult: 1.18,
+  energyRegen: 13.0,
+  skinColor: '#f7d9c6',
+  hairColor: '#1e1b18',
+  uniformColor: '#4c0519',
+  haoriPrimary: '#be185d',
+  haoriAccent: '#fbcfe8',
+  scarfColor: '#fb7185',
+  eyeColor: '#f472b6',
+  bladeColor: '#f43f5e',
+  description: 'Kamado ally fighting alongside Tanjiro with fierce martial kicks and Exploding Blood.',
+};
+
+export interface CharacterSkinPreset {
+  id: string;
+  name: string;
+  haoriPrimary?: string;
+  haoriAccent?: string;
+  uniformColor?: string;
+  scarfColor?: string;
+  bladeColor?: string;
+}
+
+export function getCharacterSkins(charId: string): CharacterSkinPreset[] {
+  const base = getCharacterById(charId);
+  return [
+    {
+      id: 'classic',
+      name: 'Classic Corps Haori',
+      haoriPrimary: base.haoriPrimary,
+      haoriAccent: base.haoriAccent,
+      uniformColor: base.uniformColor,
+      scarfColor: base.scarfColor,
+      bladeColor: base.bladeColor,
+    },
+    {
+      id: 'final_selection',
+      name: 'Midnight Slayer Attire',
+      haoriPrimary: '#1e293b',
+      haoriAccent: '#38bdf8',
+      uniformColor: '#090d16',
+      scarfColor: '#38bdf8',
+      bladeColor: '#38bdf8',
+    },
+    {
+      id: 'crimson_mark',
+      name: 'Awakened Demon-Slayer Mark',
+      haoriPrimary: '#7f1d1d',
+      haoriAccent: '#fbbf24',
+      uniformColor: '#18181b',
+      scarfColor: '#f43f5e',
+      bladeColor: '#dc2626',
+    },
+  ];
+}
+
 export const STARTER_CHARACTERS = SLAYER_CHARACTERS.filter((c) => c.isStarterChoice);
 
 export function getCharacterById(id: string): SlayerCharacterDef {
+  if (id === 'nezuko_ally') return NEZUKO_ALLY_DEF;
   return SLAYER_CHARACTERS.find((c) => c.id === id) ?? SLAYER_CHARACTERS[0];
 }

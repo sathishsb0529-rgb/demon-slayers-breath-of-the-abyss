@@ -16,6 +16,7 @@ export type BreathingStyleId =
   | 'flame'
   | 'thunder'
   | 'beast'
+  | 'wind'
   | 'insect'
   | 'sound'
   | 'mist'
@@ -405,6 +406,15 @@ export interface FighterVisualProfile {
   catEars?: boolean;
   blindfoldMask?: boolean;
   longClaws?: boolean;
+  // Bespoke Demon / Character anatomy & props
+  heldBiwa?: boolean;
+  prayerBeads?: boolean;
+  thirdEye?: boolean;
+  rainbowEyes?: boolean;
+  scars?: boolean;
+  boarMask?: boolean;
+  demonFleshArmor?: boolean;
+  haoriPattern?: 'checkered' | 'triangles' | 'flame' | 'butterfly' | 'half_half' | 'stripes' | 'mist_clouds' | 'spider_web' | 'flames_akaza';
 }
 
 export interface Fighter {
@@ -508,6 +518,45 @@ export interface ArenaObstacle {
   lastHitSwingId: number;
 }
 
+export interface ArenaWaterZone {
+  id: string;
+  x: number;
+  w: number;
+  kind: 'river' | 'waterfall_pool' | 'moat';
+}
+
+export interface ArenaDecorItem {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind:
+    | 'lantern'
+    | 'shrine'
+    | 'torii'
+    | 'house'
+    | 'cave_mouth'
+    | 'waterfall'
+    | 'ruined_wall'
+    | 'bamboo_cluster'
+    | 'pine_tree'
+    | 'castle_pillar'
+    | 'shoji_portal'
+    | 'bridge_rail'
+    | 'forge_furnace'
+    | 'wisteria_tree';
+  tint?: string;
+}
+
+export interface MapZone {
+  id: string;
+  name: string;
+  startX: number;
+  endX: number;
+  biomeHint: 'forest' | 'village' | 'river' | 'bridge' | 'cave' | 'temple' | 'mountain' | 'battlefield' | 'castle_hall' | 'castle_chasm' | 'castle_stairs' | 'castle_throne';
+}
+
 export interface BdaProjectile {
   id: number;
   ownerId: string;
@@ -605,6 +654,10 @@ export interface StoryEnemySpawn {
   hpScale?: number;
   damageScale?: number;
   isBoss?: boolean;
+  partnerArchetype?: DemonArchetype;
+  partnerName?: string;
+  partnerSubtitle?: string;
+  partnerHpScale?: number;
 }
 
 export interface StoryLevelDef {
@@ -620,7 +673,9 @@ export interface StoryLevelDef {
   difficulty: 'Normal' | 'Hard' | 'Hashira' | 'Upper Moon' | 'INSANE';
   isBossLevel: boolean;
   allyHashiraIds?: string[];
+  allyIds?: string[];
   cutsceneId?: string;
+  postCutsceneId?: string;
 }
 
 export interface TutorialStepDef {
@@ -672,6 +727,26 @@ export interface AudioSettings {
   subtitlesEnabled: boolean;
 }
 
+export interface CharacterUpgrades {
+  vitality: number; // +10 Max HP per level (0..5)
+  blade: number;    // +6% Damage per level (0..5)
+  breathing: number; // +1.2 Energy Regen per level (0..5)
+}
+
+export interface CharacterProfile {
+  characterId: string;
+  coins: number;
+  highestUnlockedLevel: number;
+  levelBestRanks: Record<number, 'S' | 'A' | 'B'>;
+  seenCutscenes: string[];
+  tutorialCompleted: boolean;
+  selectedBreathing: BreathingStyleId;
+  selectedSkinId: string;
+  upgrades: CharacterUpgrades;
+  totalDemonsDefeated: number;
+  storyChoices: Record<string, string>;
+}
+
 export interface SaveData {
   coins: number;
   unlockedCharacters: string[];
@@ -685,6 +760,7 @@ export interface SaveData {
   skipSeenCutscenes: boolean;
   audio: AudioSettings;
   totalDemonsDefeated: number;
+  characterProfiles: Record<string, CharacterProfile>;
 }
 
 export interface HudSnapshot {
@@ -717,7 +793,18 @@ export interface HudSnapshot {
   isBossBattle: boolean;
   enemyTelegraph: string | null;
 
+  partnerEnemyName?: string | null;
+  partnerEnemyHp?: number;
+  partnerEnemyMaxHp?: number;
+
   allies: Array<{ name: string; hp: number; maxHp: number }>;
+
+  zoneIndex: number;
+  zoneTotal: number;
+  zoneName: string;
+  advancePrompt: string | null;
+  playerWorldX: number;
+  worldWidth: number;
 
   tutorialStep: number;
   tutorialTitle: string;

@@ -136,7 +136,12 @@ export interface RagdollStepResult {
   readyToRecover: boolean;
 }
 
-export function stepRagdoll(fighter: Fighter, dt: number): RagdollStepResult {
+export function stepRagdoll(
+  fighter: Fighter,
+  dt: number,
+  arenaLeft = ARENA_LEFT,
+  arenaRight = ARENA_RIGHT
+): RagdollStepResult {
   const r = fighter.ragdoll;
   if (!r.active) {
     return { impactedGround: false, readyToRecover: false };
@@ -204,13 +209,13 @@ export function stepRagdoll(fighter: Fighter, dt: number): RagdollStepResult {
         r.swordAngularVel *= 0.7;
       }
 
-      if (n.x < ARENA_LEFT + n.radius) {
+      if (n.x < arenaLeft + n.radius) {
         const vx = n.x - n.oldX;
-        n.x = ARENA_LEFT + n.radius;
+        n.x = arenaLeft + n.radius;
         n.oldX = n.x + vx * 0.35;
-      } else if (n.x > ARENA_RIGHT - n.radius) {
+      } else if (n.x > arenaRight - n.radius) {
         const vx = n.x - n.oldX;
-        n.x = ARENA_RIGHT - n.radius;
+        n.x = arenaRight - n.radius;
         n.oldX = n.x + vx * 0.35;
       }
     }
@@ -223,7 +228,7 @@ export function stepRagdoll(fighter: Fighter, dt: number): RagdollStepResult {
   r.swordAngle = armAngle + 0.35 * Math.sin(r.timer * 4);
 
   const pelvis = r.nodes.pelvis;
-  fighter.x = Math.max(ARENA_LEFT + 20, Math.min(ARENA_RIGHT - 20, pelvis.x));
+  fighter.x = Math.max(arenaLeft + 20, Math.min(arenaRight - 20, pelvis.x));
   fighter.y = GROUND_Y;
   fighter.vx = (pelvis.x - pelvis.oldX) / Math.max(clampedDt, 0.008);
   fighter.vy = (pelvis.y - pelvis.oldY) / Math.max(clampedDt, 0.008);

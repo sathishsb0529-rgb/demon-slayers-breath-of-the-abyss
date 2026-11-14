@@ -1,10 +1,28 @@
-import { AttackKind, AttackSpec } from './types';
+import { AttackKind, AttackSpec, MapId } from './types';
 
 export const WORLD_WIDTH = 1860;
 export const WORLD_HEIGHT = 720;
 export const GROUND_Y = 590;
 export const ARENA_LEFT = 85;
 export const ARENA_RIGHT = WORLD_WIDTH - 85;
+
+export const MAP_WIDTHS: Record<MapId, number> = {
+  bamboo_forest: 9600,
+  mountain_training: 9600,
+  snowy_mountain: 9800,
+  japanese_village: 10000,
+  dark_forest: 10000,
+  abandoned_temple: 9800,
+  spider_mountain: 10400,
+  entertainment_district: 10400,
+  swordsmith_village: 10000,
+  hashira_grounds: 9600,
+  infinity_castle: 12000,
+};
+
+export function getMapWidth(mapId: MapId, compact = false): number {
+  return compact ? WORLD_WIDTH : (MAP_WIDTHS[mapId] ?? 9600);
+}
 
 export const GRAVITY = 2180;
 export const RAGDOLL_GRAVITY = 1920;

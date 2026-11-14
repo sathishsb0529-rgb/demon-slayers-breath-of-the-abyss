@@ -165,19 +165,81 @@ function computeProceduralPose(fighter: Fighter, overrideState?: Fighter['state'
     rKnee = pt(15, 25 + breath * 0.5);
     rFoot = pt(20, 2);
     if (isDemon) {
+      const arch = fighter.demonArchetype;
+      const hunch = arch === 'gyutaro' || arch === 'gyutaro_awakened' || arch === 'boss_hand' ? -10 : 0;
       pelvis = pt(-3, 42 + breath * 1.5);
-      chest = pt(8, 69 + breath * 2.1);
-      head = pt(14, 88 + breath * 2.1);
-      lHandTarget = pt(0, 49 + breath * 2.4);
-      rHandTarget = pt(28, 53 + breath * 2.4);
-      torsoTilt = 0.25 * f;
-      swordAngle = f === 1 ? 0.48 : Math.PI - 0.48;
+      chest = pt(8 + (arch === 'gyutaro' || arch === 'gyutaro_awakened' ? 6 : 0), 69 + breath * 2.1 + hunch * 0.5);
+      head = pt(14 + (arch === 'gyutaro' || arch === 'gyutaro_awakened' ? 8 : 0), 88 + breath * 2.1 + hunch);
+      lHandTarget = arch === 'boss_nakime' ? pt(10, 62 + breath * 1.5) : pt(0, 49 + breath * 2.4);
+      rHandTarget =
+        arch === 'boss_akaza' || arch === 'akaza_awakened'
+          ? pt(24, 66 + breath * 2.2)
+          : arch === 'boss_nakime'
+            ? pt(16, 56 + breath * 1.6)
+            : pt(28, 53 + breath * 2.4);
+      torsoTilt = (arch === 'gyutaro' || arch === 'gyutaro_awakened' ? 0.38 : arch === 'boss_nakime' ? 0.08 : 0.25) * f;
+      swordAngle =
+        arch === 'boss_akaza' || arch === 'akaza_awakened'
+          ? f === 1
+            ? -0.25
+            : Math.PI + 0.25
+          : f === 1
+            ? 0.48
+            : Math.PI - 0.48;
     } else {
-      // Sword held gracefully angled forward-upward in lead hand, offhand poised near scabbard
-      lHandTarget = pt(-8, 53 + breath * 1.5);
-      rHandTarget = pt(22, 63 + breath * 1.9);
-      const localS = -0.54 + breath * 0.04;
-      swordAngle = f === 1 ? localS : Math.PI - localS;
+      // Character-distinct swordsmanship ready stances!
+      const cid = fighter.characterId;
+      if (cid === 'zenitsu') {
+        // Low Thunderclap & Flash iaijutsu crouch with hand on hilt
+        pelvis = pt(-4, 38 + breath * 1.0);
+        chest = pt(7, 64 + breath * 1.4);
+        head = pt(11, 84 + breath * 1.5);
+        lKnee = pt(-16, 20);
+        lFoot = pt(-24, 2);
+        rKnee = pt(18, 22);
+        rFoot = pt(25, 2);
+        lHandTarget = pt(-10, 48);
+        rHandTarget = pt(6, 52);
+        torsoTilt = 0.24 * f;
+        swordAngle = f === 1 ? 2.82 : Math.PI - 2.82;
+      } else if (cid === 'inosuke') {
+        // Wide feral Beast Breathing crouch
+        pelvis = pt(-2, 39 + breath * 1.8);
+        chest = pt(8, 65 + breath * 2.2);
+        head = pt(12, 85 + breath * 2.2);
+        lKnee = pt(-18, 22);
+        lFoot = pt(-26, 2);
+        rKnee = pt(20, 22);
+        rFoot = pt(27, 2);
+        lHandTarget = pt(-6, 55 + breath * 2);
+        rHandTarget = pt(26, 56 + breath * 2);
+        torsoTilt = 0.22 * f;
+        swordAngle = f === 1 ? -0.35 : Math.PI + 0.35;
+      } else if (cid === 'nezuko_ally') {
+        // Protective demon martial stance
+        pelvis = pt(-2, 43 + breath * 1.4);
+        chest = pt(5, 70 + breath * 1.8);
+        head = pt(8, 90 + breath * 1.8);
+        lHandTarget = pt(2, 58 + breath * 1.5);
+        rHandTarget = pt(22, 62 + breath * 1.8);
+        swordAngle = f === 1 ? -0.2 : Math.PI + 0.2;
+      } else if (cid === 'sanemi') {
+        // Aggressive scarred Wind Hashira lean
+        pelvis = pt(-3, 44 + breath * 1.4);
+        chest = pt(6, 72 + breath * 2.0);
+        head = pt(9, 92 + breath * 2.0);
+        lHandTarget = pt(-10, 52 + breath * 1.5);
+        rHandTarget = pt(26, 66 + breath * 1.8);
+        torsoTilt = 0.16 * f;
+        const localS = -0.34 + breath * 0.05;
+        swordAngle = f === 1 ? localS : Math.PI - localS;
+      } else {
+        // Balanced Nichirin ready guard
+        lHandTarget = pt(-8, 53 + breath * 1.5);
+        rHandTarget = pt(22, 63 + breath * 1.9);
+        const localS = -0.54 + breath * 0.04;
+        swordAngle = f === 1 ? localS : Math.PI - localS;
+      }
     }
   } else if (st === 'WALK' || st === 'RUN') {
     const isRun = st === 'RUN';
@@ -651,13 +713,42 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
   const build = v.bodyBuild ?? 'standard';
   const widthMult = build === 'hulk' ? 1.28 : build === 'slim' ? 0.88 : 1.0;
 
-  // Ground shadow
+  // Ground shadow & Akaza Compass Needle Snowflake Aura
   const shadowScale = Math.max(0.35, 1 - Math.max(0, GROUND_Y - pose.pelvis.y - 40) / 280);
   ctx.save();
   ctx.fillStyle = 'rgba(2, 6, 18, 0.55)';
   ctx.beginPath();
   ctx.ellipse(pose.pelvis.x, Math.min(GROUND_Y + 3, fighter.y + 3), 34 * v.scale * widthMult * shadowScale, 8 * shadowScale, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  const arch = fighter.demonArchetype;
+  if (arch === 'boss_akaza' || arch === 'akaza_awakened') {
+    const compassR = (arch === 'akaza_awakened' ? 68 : 54) * v.scale;
+    ctx.save();
+    ctx.translate(pose.pelvis.x, Math.min(GROUND_Y + 2, fighter.y + 2));
+    ctx.scale(1, 0.34);
+    ctx.rotate(fighter.animTime * 0.9);
+    ctx.strokeStyle = arch === 'akaza_awakened' ? 'rgba(56, 189, 248, 0.85)' : 'rgba(56, 189, 248, 0.65)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(0, 0, compassR, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let k = 0; k < 6; k++) {
+      const a = (k * Math.PI) / 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * compassR * 1.15, Math.sin(a) * compassR * 1.15);
+      ctx.stroke();
+    }
+    ctx.restore();
+  } else if (arch === 'boss_kokushibo' || arch === 'kokushibo_demon' || arch === 'muzan_final') {
+    // Menacing crimson/violet Upper One or Demon King ground aura
+    ctx.strokeStyle = arch === 'muzan_final' ? 'rgba(225, 29, 72, 0.45)' : 'rgba(168, 85, 247, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(pose.pelvis.x, Math.min(GROUND_Y + 2, fighter.y + 2), 52 * v.scale, 14, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
 
   ctx.save();
@@ -877,13 +968,69 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
     ctx.fillStyle = v.haoriPrimary;
     ctx.fill();
     ctx.stroke();
-  } else if (v.hasMarkings) {
-    ctx.strokeStyle = v.markingColor ?? '#fb7185';
-    ctx.lineWidth = 2;
+
+    // Rui spider-web kimono threads or Doma crimson blood-splash shoulders
+    if (fighter.demonArchetype === 'boss_rui') {
+      ctx.strokeStyle = '#e11d48';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(pose.pelvis.x - 10 * v.scale, pose.pelvis.y + 6);
+      ctx.lineTo(pose.pelvis.x + 12 * v.scale, pose.pelvis.y + 18);
+      ctx.moveTo(pose.pelvis.x + 10 * v.scale, pose.pelvis.y + 2);
+      ctx.lineTo(pose.pelvis.x - 14 * v.scale, pose.pelvis.y + 22);
+      ctx.stroke();
+    } else if (fighter.demonArchetype === 'boss_doma' || fighter.demonArchetype === 'doma_final') {
+      ctx.fillStyle = '#991b1b';
+      ctx.beginPath();
+      ctx.arc(pose.chest.x, pose.chest.y - 2, 11 * v.scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (v.hasMarkings || fighter.demonArchetype === 'boss_akaza' || fighter.demonArchetype === 'akaza_awakened') {
+    ctx.strokeStyle = v.markingColor ?? (fighter.demonArchetype?.includes('akaza') ? '#1e3a8a' : '#fb7185');
+    ctx.lineWidth = fighter.demonArchetype?.includes('akaza') ? 3.2 : 2;
     ctx.beginPath();
     ctx.moveTo(pose.pelvis.x, pose.pelvis.y - 4);
     ctx.lineTo(pose.chest.x + f * 3, pose.chest.y + 4);
+    ctx.moveTo(pose.chest.x - 5 * v.scale, pose.chest.y);
+    ctx.lineTo(pose.chest.x + 6 * v.scale, pose.pelvis.y + 2);
     ctx.stroke();
+  }
+
+  // Akaza giant crimson/pink prayer beads on ankles & wrists
+  if (fighter.demonArchetype === 'boss_akaza' || fighter.demonArchetype === 'akaza_awakened') {
+    ctx.fillStyle = '#e11d48';
+    for (const jp of [pose.rFoot, pose.lFoot, pose.rHand, pose.lHand]) {
+      for (let b = -1; b <= 1; b++) {
+        ctx.beginPath();
+        ctx.arc(jp.x + b * 3.5, jp.y - 4, 2.5 * v.scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Nakime traditional Japanese Biwa lute held at chest!
+  if (fighter.demonArchetype === 'boss_nakime' || v.heldBiwa) {
+    ctx.save();
+    ctx.translate(pose.chest.x + f * 10 * v.scale, pose.chest.y + 6 * v.scale);
+    ctx.rotate(f * -0.45);
+    ctx.fillStyle = '#78350f';
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.ellipse(0, 6 * v.scale, 13 * v.scale, 17 * v.scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#451a03';
+    ctx.fillRect(-3 * v.scale, -26 * v.scale, 6 * v.scale, 22 * v.scale);
+    ctx.strokeStyle = '#fde68a';
+    ctx.lineWidth = 0.8;
+    for (let sx = -2; sx <= 2; sx += 1.4) {
+      ctx.beginPath();
+      ctx.moveTo(sx * v.scale, -22 * v.scale);
+      ctx.lineTo(sx * v.scale, 18 * v.scale);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // Head & Hair / Horns / Fedora / Extra Eyes
@@ -899,19 +1046,93 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
   ctx.lineWidth = 1.8;
   ctx.stroke();
 
-  // Primary Eyes
-  ctx.fillStyle = v.eyeColor;
+  // Primary Eyes (+ Doma Rainbow glint, Nakime single eye under bangs, Cutscene expressions)
+  const isDoma = fighter.demonArchetype === 'boss_doma' || fighter.demonArchetype === 'doma_final' || v.rainbowEyes;
+  const isNakime = fighter.demonArchetype === 'boss_nakime';
+  const emo = fighter.subtitle?.startsWith('__emo:') ? fighter.subtitle.slice(6) : undefined;
+
+  if (isDoma) {
+    const grad = ctx.createRadialGradient(f * 5 * v.scale, -1 * v.scale, 0.4, f * 5 * v.scale, -1 * v.scale, 3.2 * v.scale);
+    grad.addColorStop(0, '#f43f5e');
+    grad.addColorStop(0.5, '#38bdf8');
+    grad.addColorStop(1, '#fbbf24');
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = isNakime ? '#f472b6' : v.eyeColor;
+  }
   ctx.beginPath();
-  ctx.ellipse(f * 5 * v.scale, -1 * v.scale, 2.4 * v.scale, 1.7 * v.scale, 0, 0, Math.PI * 2);
+  ctx.ellipse(
+    f * 5 * v.scale,
+    -1 * v.scale,
+    (isNakime ? 3.2 : 2.4) * v.scale,
+    (emo === 'shocked' ? 2.6 : 1.7) * v.scale,
+    0,
+    0,
+    Math.PI * 2
+  );
   ctx.fill();
 
-  // Kokushibo 6 eyes or Daki third eye
-  if (v.extraEyes) {
-    ctx.fillStyle = v.eyeColor;
+  // Kokushibo 6 eyes or Daki Awakened forehead Third Eye
+  if (v.extraEyes || fighter.demonArchetype === 'boss_kokushibo' || fighter.demonArchetype === 'kokushibo_demon') {
+    ctx.fillStyle = '#fde047';
     ctx.beginPath();
-    ctx.ellipse(f * 4.5 * v.scale, -5 * v.scale, 1.8 * v.scale, 1.2 * v.scale, 0, 0, Math.PI * 2);
-    ctx.ellipse(f * 4.5 * v.scale, 3.2 * v.scale, 1.8 * v.scale, 1.2 * v.scale, 0, 0, Math.PI * 2);
+    ctx.ellipse(f * 4.5 * v.scale, -5.2 * v.scale, 1.9 * v.scale, 1.3 * v.scale, 0, 0, Math.PI * 2);
+    ctx.ellipse(f * 4.5 * v.scale, 3.3 * v.scale, 1.9 * v.scale, 1.3 * v.scale, 0, 0, Math.PI * 2);
     ctx.fill();
+  } else if (fighter.demonArchetype === 'daki_awakened' || v.thirdEye) {
+    ctx.fillStyle = '#a3e635';
+    ctx.beginPath();
+    ctx.ellipse(f * 4.2 * v.scale, -6.2 * v.scale, 2.0 * v.scale, 1.4 * v.scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Facial brow / scar / Rui red spider dots / Nezuko bamboo muzzle
+  if (emo === 'fierce' || emo === 'angry' || fighter.state === 'BREATHING_FORM') {
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(f * 2 * v.scale, -4.5 * v.scale);
+    ctx.lineTo(f * 8 * v.scale, -2.2 * v.scale);
+    ctx.stroke();
+  } else if (emo === 'sad') {
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(f * 2 * v.scale, -2.5 * v.scale);
+    ctx.lineTo(f * 8 * v.scale, -4.5 * v.scale);
+    ctx.stroke();
+  }
+
+  if (fighter.characterId === 'sanemi' || fighter.characterId === 'tanjiro') {
+    // Sanemi cheek scar / Tanjiro Demon Slayer forehead scar
+    ctx.strokeStyle = '#991b1b';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    if (fighter.characterId === 'sanemi') {
+      ctx.moveTo(f * 1 * v.scale, 1 * v.scale);
+      ctx.lineTo(f * 7 * v.scale, 5 * v.scale);
+    } else {
+      ctx.moveTo(f * 2 * v.scale, -8 * v.scale);
+      ctx.lineTo(f * 5.5 * v.scale, -5 * v.scale);
+    }
+    ctx.stroke();
+  }
+
+  if (fighter.demonArchetype === 'boss_rui') {
+    ctx.fillStyle = '#e11d48';
+    ctx.beginPath();
+    ctx.arc(f * 6.5 * v.scale, 3.2 * v.scale, 1.3 * v.scale, 0, Math.PI * 2);
+    ctx.arc(f * 2.5 * v.scale, 3.5 * v.scale, 1.1 * v.scale, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (fighter.characterId === 'nezuko_ally' || fighter.demonArchetype === 'nezuko_base') {
+    // Iconic green bamboo muzzle held by crimson tie
+    ctx.fillStyle = '#15803d';
+    ctx.strokeStyle = '#052e16';
+    ctx.lineWidth = 1.2;
+    ctx.fillRect(f * 3 * v.scale, 1.2 * v.scale, f * 8.5 * v.scale, 4.4 * v.scale);
+    ctx.strokeRect(f * 3 * v.scale, 1.2 * v.scale, f * 8.5 * v.scale, 4.4 * v.scale);
   }
 
   // Anime spiky hair (or Boar mask hint if Inosuke!)
@@ -948,6 +1169,29 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+
+    // Nakime long black bangs draping half over her face
+    if (isNakime) {
+      ctx.fillStyle = '#09090b';
+      ctx.beginPath();
+      ctx.moveTo(-4 * v.scale, -13 * v.scale);
+      ctx.lineTo(9 * v.scale, -10 * v.scale);
+      ctx.lineTo(7 * v.scale, 9 * v.scale);
+      ctx.lineTo(-3 * v.scale, 7 * v.scale);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Daki floating ornamental kanzashi hairpins
+    if (fighter.demonArchetype === 'boss_daki' || fighter.demonArchetype === 'daki_awakened') {
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 1.6;
+      for (const a of [-0.6, 0.2, 0.9]) {
+        ctx.beginPath();
+        ctx.moveTo(-2 * v.scale, -10 * v.scale);
+        ctx.lineTo(-2 * v.scale - Math.cos(a) * 14 * v.scale, -10 * v.scale - Math.sin(a) * 14 * v.scale);
+        ctx.stroke();
+      }
+    }
   }
 
   if (v.fedora) {

@@ -79,6 +79,7 @@ export class ParticleSystem {
       flame: 'flame',
       thunder: 'lightning',
       beast: 'spark',
+      wind: 'mist',
       insect: 'poison',
       sound: 'flame',
       mist: 'mist',

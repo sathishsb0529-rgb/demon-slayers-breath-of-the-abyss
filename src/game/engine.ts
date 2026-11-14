@@ -5,7 +5,7 @@ import {
   renderFighter,
   renderTrainingRock,
 } from './animation';
-import { ArenaRenderer, createArenaLayout } from './arena';
+import { ArenaRenderer, createArenaLayout, getMapZones } from './arena';
 import { SoundEngine } from './audio';
 import {
   BREATHING_STYLES,
@@ -16,7 +16,7 @@ import {
   MAP_DISPLAY_NAMES,
   TUTORIAL_STEPS,
 } from './campaign';
-import { getCharacterById, SLAYER_CHARACTERS } from './characters';
+import { getCharacterById, getCharacterSkins, SLAYER_CHARACTERS } from './characters';
 import {
   getActiveAttackHitbox,
   getFighterHurtbox,
@@ -27,7 +27,6 @@ import {
 } from './combat';
 import {
   ARENA_LEFT,
-  ARENA_RIGHT,
   BASE_ATTACK_SPECS,
   DODGE_COOLDOWN,
   DODGE_DURATION,
@@ -51,12 +50,15 @@ import {
   stepRagdoll,
 } from './physics';
 import {
+  ArenaDecorItem,
   ArenaObstacle,
   ArenaPlatform,
+  ArenaWaterZone,
   AttackSpec,
   AudioSettings,
   BdaProjectile,
   BreathingStyleId,
+  CharacterUpgrades,
   DemonArchetype,
   Fighter,
   FighterActionState,
@@ -65,6 +67,7 @@ import {
   HudSnapshot,
   InputState,
   MapId,
+  MapZone,
   StoryEnemySpawn,
   StoryLevelDef,
 } from './types';
@@ -74,9 +77,24 @@ function createSlayerFighter(
   role: Fighter['role'],
   charId: string,
   breathingStyle: BreathingStyleId,
-  startX: number
+  startX: number,
+  upgrades?: CharacterUpgrades,
+  skinId?: string
 ): Fighter {
   const def = getCharacterById(charId);
+  const vitLv = upgrades?.vitality ?? 0;
+  const bladeLv = upgrades?.blade ?? 0;
+  const breathLv = upgrades?.breathing ?? 0;
+
+  const skin = skinId
+    ? getCharacterSkins(charId).find((s) => s.id === skinId)
+    : undefined;
+
+  const maxHp = def.maxHp + vitLv * 22;
+  const damageMult = def.damageMult * (1 + bladeLv * 0.09);
+  const speedMult = def.speedMult * (1 + breathLv * 0.05);
+  const energyRegen = def.energyRegen + breathLv * 1.4;
+
   return {
     id,
     name: def.name,
@@ -87,20 +105,27 @@ function createSlayerFighter(
       skinColor: def.skinColor,
       hairColor: def.hairColor,
       uniformColor: def.uniformColor,
-      haoriPrimary: def.haoriPrimary,
-      haoriAccent: def.haoriAccent,
-      scarfColor: def.scarfColor,
+      haoriPrimary: skin?.haoriPrimary ?? def.haoriPrimary,
+      haoriAccent: skin?.haoriAccent ?? def.haoriAccent,
+      scarfColor: skin?.scarfColor ?? def.scarfColor,
       eyeColor: def.eyeColor,
-      bladeColor: def.bladeColor,
+      bladeColor: skin?.bladeColor ?? def.bladeColor,
       weapon: def.weapon,
-      scale: def.id === 'gyomei' ? 1.15 : 1.0,
-      bodyBuild: def.id === 'gyomei' ? 'hulk' : def.id === 'shinobu' || def.id === 'kanao' ? 'slim' : 'standard',
+      scale: def.id === 'gyomei' ? 1.15 : def.id === 'nezuko_ally' ? 0.94 : 1.0,
+      bodyBuild:
+        def.id === 'gyomei'
+          ? 'hulk'
+          : def.id === 'shinobu' || def.id === 'kanao' || def.id === 'nezuko_ally'
+            ? 'slim'
+            : 'standard',
+      hasHorns: def.id === 'nezuko_ally',
+      hornColor: '#f43f5e',
     },
     breathingStyle,
-    damageMult: def.damageMult,
-    speedMult: def.speedMult,
+    damageMult,
+    speedMult,
     attackSpeedMult: def.attackSpeedMult,
-    energyRegen: def.energyRegen,
+    energyRegen,
     x: startX,
     y: GROUND_Y,
     vx: 0,
@@ -109,9 +134,9 @@ function createSlayerFighter(
     grounded: true,
     coyoteTimer: 0.1,
     jumpBufferTimer: 0,
-    hp: def.maxHp,
-    maxHp: def.maxHp,
-    displayHp: def.maxHp,
+    hp: maxHp,
+    maxHp,
+    displayHp: maxHp,
     energy: 50,
     maxEnergy: 100,
     state: 'IDLE',
@@ -243,6 +268,7 @@ export class GameEngine {
   private arena = new ArenaRenderer();
   private particles = new ParticleSystem();
   private enemyAI = new EnemyAI();
+  private partnerAI = new EnemyAI();
   private cloneAI = new EnemyAI();
   private allyAIs: HashiraAllyAI[] = [];
 
@@ -252,12 +278,21 @@ export class GameEngine {
   public currentLevel: StoryLevelDef = getLevelById(1);
   private waveIndex = 0;
 
+  private worldWidth = WORLD_WIDTH;
+  private zones: MapZone[] = [];
+  private waterZones: ArenaWaterZone[] = [];
+  private decors: ArenaDecorItem[] = [];
+  private currentZoneIndex = 1;
+  private enemyEngaged = true;
+  private activeCampaignCharId = 'tanjiro';
+
   public player: Fighter = createSlayerFighter('player', 'player', 'tanjiro', 'water', WORLD_WIDTH * 0.5 - 190);
   public enemy: Fighter = createDemonFighter(
     { archetype: 'basic', name: 'Feral Night Demon', subtitle: 'Lesser Demon' },
     0,
     WORLD_WIDTH * 0.5 + 190
   );
+  public partnerEnemy: Fighter | null = null;
   public cloneEnemy: Fighter | null = null;
   public allies: Fighter[] = [];
   private platforms: ArenaPlatform[] = [];
@@ -295,6 +330,7 @@ export class GameEngine {
   private hitstopTimer = 0;
   private shakeIntensity = 0;
   private cameraX = WORLD_WIDTH * 0.5;
+  private cameraZoom = 1.0;
   private matchTime = 0;
   private hudEmitAccum = 0;
   private runHoldTime = 0;
@@ -320,9 +356,13 @@ export class GameEngine {
     }
     this.ctx = context;
     this.callbacks = callbacks;
-    const layout = createArenaLayout(this.mapId);
+    const layout = createArenaLayout(this.mapId, true);
+    this.worldWidth = layout.worldWidth;
     this.platforms = layout.platforms;
     this.obstacles = layout.obstacles;
+    this.waterZones = layout.waterZones;
+    this.decors = layout.decors;
+    this.zones = layout.zones;
     this.resize();
   }
 
@@ -370,18 +410,38 @@ export class GameEngine {
     this.sound.stopMusic();
   }
 
-  public startTutorial(charId: string, breathingStyle: BreathingStyleId): void {
+  public startTutorial(
+    charId: string,
+    breathingStyle: BreathingStyleId,
+    upgrades?: CharacterUpgrades,
+    skinId?: string
+  ): void {
     this.sound.unlock();
     this.mode = 'TUTORIAL';
     this.mapId = 'mountain_training';
+    this.activeCampaignCharId = charId;
     this.isCurrentBossBattle = false;
-    this.sound.setMapTheme(this.mapId, false);
+    this.sound.setMusicContext('gameplay', this.mapId, false, undefined, charId);
 
-    const layout = createArenaLayout(this.mapId);
+    const layout = createArenaLayout(this.mapId, true);
+    this.worldWidth = layout.worldWidth;
     this.platforms = layout.platforms;
-    this.obstacles = []; // Keep training floor clear for Mentor & Giant Boulder
+    this.obstacles = [];
+    this.waterZones = [];
+    this.decors = layout.decors;
+    this.zones = [];
+    this.currentZoneIndex = 1;
+    this.enemyEngaged = true;
 
-    this.player = createSlayerFighter('player', 'player', charId, breathingStyle, WORLD_WIDTH * 0.5 - 230);
+    this.player = createSlayerFighter(
+      'player',
+      'player',
+      charId,
+      breathingStyle,
+      WORLD_WIDTH * 0.5 - 230,
+      upgrades,
+      skinId
+    );
     this.enemy = createSlayerFighter('mentor', 'demon', 'giyu', 'water', WORLD_WIDTH * 0.5 + 110);
     this.enemy.name = 'Mentor Urokodaki';
     this.enemy.subtitle = 'Water Cultivator';
@@ -393,6 +453,7 @@ export class GameEngine {
     this.enemy.visual.haoriAccent = '#e2e8f0';
     this.enemy.visual.hairColor = '#cbd5e1';
 
+    this.partnerEnemy = null;
     this.cloneEnemy = null;
     this.allies = [];
     this.allyAIs = [];
@@ -411,48 +472,112 @@ export class GameEngine {
     this.rockLastSwingId = -1;
 
     this.resetMatchCounters();
+    this.cameraX = WORLD_WIDTH * 0.5;
     this.phase = 'PLAYING';
     this.emitHudSnapshot();
   }
 
-  public startStoryLevel(levelId: number, charId: string, breathingStyle: BreathingStyleId): void {
+  private getWaveSpawnX(waveIdx: number, totalWaves: number): number {
+    if (totalWaves <= 1) {
+      return Math.min(this.worldWidth - 1800, 2650);
+    }
+    const fractions = totalWaves === 2 ? [0.22, 0.72] : totalWaves === 3 ? [0.2, 0.5, 0.8] : [0.18, 0.4, 0.64, 0.84];
+    const frac = fractions[Math.min(fractions.length - 1, waveIdx)];
+    return Math.round(this.worldWidth * frac);
+  }
+
+  private spawnWaveFighters(spawn: StoryEnemySpawn, waveIdx: number, spawnX: number): void {
+    this.enemy = createDemonFighter(spawn, waveIdx, spawnX);
+    if (spawn.partnerArchetype) {
+      const pTpl = DEMON_TEMPLATES[spawn.partnerArchetype];
+      this.partnerEnemy = createDemonFighter(
+        {
+          archetype: spawn.partnerArchetype,
+          name: spawn.partnerName ?? pTpl.displayName,
+          subtitle: spawn.partnerSubtitle ?? pTpl.rankLabel,
+          hpScale: spawn.partnerHpScale ?? 0.85,
+          isBoss: spawn.isBoss,
+        },
+        waveIdx + 50,
+        Math.min(this.worldWidth - 140, spawnX + 145)
+      );
+      this.partnerAI.reset();
+    } else {
+      this.partnerEnemy = null;
+    }
+  }
+
+  public startStoryLevel(
+    levelId: number,
+    charId: string,
+    breathingStyle: BreathingStyleId,
+    levelOverride?: StoryLevelDef,
+    upgrades?: CharacterUpgrades,
+    skinId?: string
+  ): void {
     this.sound.unlock();
-    const level = getLevelById(levelId);
+    const level = levelOverride ?? getLevelById(levelId);
     this.mode = 'STORY';
     this.currentLevel = level;
     this.mapId = level.mapId;
+    this.activeCampaignCharId = charId;
     this.waveIndex = 0;
-    this.isCurrentBossBattle = level.isBossLevel || Boolean(level.enemies[0]?.isBoss);
-    this.sound.setMapTheme(this.mapId, this.isCurrentBossBattle);
 
-    const layout = createArenaLayout(this.mapId);
+    const layout = createArenaLayout(this.mapId, false);
+    this.worldWidth = layout.worldWidth;
     this.platforms = layout.platforms;
     this.obstacles = layout.obstacles;
+    this.waterZones = layout.waterZones;
+    this.decors = layout.decors;
+    this.zones = layout.zones.length > 0 ? layout.zones : getMapZones(this.mapId, this.worldWidth);
 
-    this.player = createSlayerFighter('player', 'player', charId, breathingStyle, WORLD_WIDTH * 0.5 - 210);
-    this.enemy = createDemonFighter(level.enemies[0], 0, WORLD_WIDTH * 0.5 + 210);
+    const firstSpawn = level.enemies[0];
+    this.isCurrentBossBattle = level.isBossLevel || Boolean(firstSpawn?.isBoss);
+    this.sound.setMusicContext(
+      'gameplay',
+      this.mapId,
+      this.isCurrentBossBattle,
+      firstSpawn?.archetype,
+      charId
+    );
+
+    const playerStartX = 680;
+    const wave0X = this.getWaveSpawnX(0, level.enemies.length);
+
+    this.player = createSlayerFighter(
+      'player',
+      'player',
+      charId,
+      breathingStyle,
+      playerStartX,
+      upgrades,
+      skinId
+    );
+    this.spawnWaveFighters(firstSpawn, 0, wave0X);
     this.cloneEnemy = null;
+    this.enemyEngaged = Math.abs(wave0X - playerStartX) < 960;
 
-    if (this.isCurrentBossBattle) {
+    if (this.isCurrentBossBattle && this.enemyEngaged) {
       this.sound.playBossEntrance();
     }
 
-    // Level 50 Muzan Battle: Spawn Hashira AI Allies
+    // Canon Squad & Hashira AI Allies
     this.allies = [];
     this.allyAIs = [];
-    if (level.allyHashiraIds && level.allyHashiraIds.length > 0) {
-      const candidateIds = level.allyHashiraIds.filter((id) => id !== charId);
+    const requestedAllies = level.allyIds ?? level.allyHashiraIds ?? [];
+    if (requestedAllies.length > 0) {
+      const candidateIds = requestedAllies.filter((id) => id !== charId);
       const fallback = SLAYER_CHARACTERS.filter((c) => c.isHashira && c.id !== charId).map((c) => c.id);
-      const chosen = [...candidateIds, ...fallback].slice(0, 2);
+      const chosen = candidateIds.length > 0 ? candidateIds.slice(0, 3) : fallback.slice(0, 2);
 
       chosen.forEach((allyId, idx) => {
         const allyDef = getCharacterById(allyId);
         const allyFighter = createSlayerFighter(
-          `ally_${allyId}`,
+          `ally_${allyId}_${idx}`,
           'ally',
           allyId,
           allyDef.defaultBreathing,
-          WORLD_WIDTH * 0.5 - 300 - idx * 80
+          Math.max(ARENA_LEFT + 70, playerStartX - 85 - idx * 65)
         );
         this.allies.push(allyFighter);
         this.allyAIs.push(new HashiraAllyAI());
@@ -464,7 +589,9 @@ export class GameEngine {
     this.enemyAI.reset();
     this.cloneAI.reset();
     this.resetMatchCounters();
+    this.cameraX = Math.max(460, playerStartX + 180);
     this.phase = 'PLAYING';
+    this.updateZoneTracker();
     this.emitHudSnapshot();
   }
 
@@ -472,34 +599,52 @@ export class GameEngine {
     mapId: MapId,
     demonArchetype: DemonArchetype,
     charId: string,
-    breathingStyle: BreathingStyleId
+    breathingStyle: BreathingStyleId,
+    upgrades?: CharacterUpgrades,
+    skinId?: string
   ): void {
     this.sound.unlock();
     this.mode = 'PRACTICE';
     this.mapId = mapId;
+    this.activeCampaignCharId = charId;
     this.waveIndex = 0;
+
+    const layout = createArenaLayout(this.mapId, false);
+    this.worldWidth = layout.worldWidth;
+    this.platforms = layout.platforms;
+    this.obstacles = layout.obstacles;
+    this.waterZones = layout.waterZones;
+    this.decors = layout.decors;
+    this.zones = layout.zones.length > 0 ? layout.zones : getMapZones(this.mapId, this.worldWidth);
+
     const tpl = DEMON_TEMPLATES[demonArchetype];
     this.isCurrentBossBattle =
       demonArchetype.startsWith('boss_') ||
       demonArchetype.endsWith('_final') ||
       demonArchetype === 'demon_king_tanjiro' ||
       demonArchetype === 'kokushibo_demon';
-    this.sound.setMapTheme(this.mapId, this.isCurrentBossBattle);
+    this.sound.setMusicContext('gameplay', this.mapId, this.isCurrentBossBattle, demonArchetype, charId);
 
-    const layout = createArenaLayout(this.mapId);
-    this.platforms = layout.platforms;
-    this.obstacles = layout.obstacles;
-
-    this.player = createSlayerFighter('player', 'player', charId, breathingStyle, WORLD_WIDTH * 0.5 - 200);
-    this.enemy = createDemonFighter(
+    const playerStartX = 1280;
+    const enemyStartX = 1860;
+    this.player = createSlayerFighter(
+      'player',
+      'player',
+      charId,
+      breathingStyle,
+      playerStartX,
+      upgrades,
+      skinId
+    );
+    this.spawnWaveFighters(
       {
         archetype: demonArchetype,
         name: tpl.displayName,
         subtitle: `${tpl.rankLabel} · ${MAP_DISPLAY_NAMES[mapId]}`,
-        hpScale: demonArchetype === 'boss_muzan' || demonArchetype === 'muzan_final' ? 0.8 : 1.0,
+        hpScale: demonArchetype === 'boss_muzan' || demonArchetype === 'muzan_final' ? 0.82 : 1.0,
       },
       0,
-      WORLD_WIDTH * 0.5 + 200
+      enemyStartX
     );
     this.cloneEnemy = null;
     this.allies = [];
@@ -509,19 +654,22 @@ export class GameEngine {
     this.enemyAI.reset();
     this.cloneAI.reset();
     this.resetMatchCounters();
+    this.enemyEngaged = true;
+    this.cameraX = (playerStartX + enemyStartX) * 0.5;
     this.phase = 'PLAYING';
+    this.updateZoneTracker();
     this.emitHudSnapshot();
   }
 
-  public restartCurrentBattle(): void {
-    const charId = this.player.characterId ?? 'tanjiro';
+  public restartCurrentBattle(upgrades?: CharacterUpgrades, skinId?: string): void {
+    const charId = this.player.characterId ?? this.activeCampaignCharId;
     const style = this.player.breathingStyle;
     if (this.mode === 'TUTORIAL') {
-      this.startTutorial(charId, style);
+      this.startTutorial(charId, style, upgrades, skinId);
     } else if (this.mode === 'STORY') {
-      this.startStoryLevel(this.currentLevel.id, charId, style);
+      this.startStoryLevel(this.currentLevel.id, charId, style, this.currentLevel, upgrades, skinId);
     } else {
-      this.startPracticeMatch(this.mapId, this.enemy.demonArchetype ?? 'basic', charId, style);
+      this.startPracticeMatch(this.mapId, this.enemy.demonArchetype ?? 'basic', charId, style, upgrades, skinId);
     }
   }
 
@@ -537,7 +685,7 @@ export class GameEngine {
     this.coinsEarnedThisRun = 0;
     this.lastRank = null;
     this.killsThisRun = 0;
-    this.cameraX = WORLD_WIDTH * 0.5;
+    this.cameraZoom = 1.0;
     this.clearAllInputs();
   }
 
@@ -557,14 +705,21 @@ export class GameEngine {
     this.particles.clear();
     this.projectiles = [];
     this.cloneEnemy = null;
+    this.partnerEnemy = null;
     this.clearAllInputs();
     this.phase = 'TITLE_MENU';
-    this.sound.setMapTheme('menu', false);
+    const compact = createArenaLayout('bamboo_forest', true);
+    this.worldWidth = compact.worldWidth;
+    this.platforms = compact.platforms;
+    this.obstacles = compact.obstacles;
+    this.waterZones = [];
+    this.decors = compact.decors;
+    this.sound.setMusicContext('menu', 'menu', false, undefined, this.activeCampaignCharId);
     this.emitHudSnapshot();
   }
 
-  public setMenuMusicTheme(theme: 'menu' | 'char_select'): void {
-    this.sound.setMapTheme(theme, false);
+  public setMenuMusicTheme(theme: 'menu' | 'char_select', charId?: string): void {
+    this.sound.setMusicContext(theme, theme, false, undefined, charId ?? this.activeCampaignCharId);
   }
 
   public toggleMute(): boolean {
@@ -646,15 +801,29 @@ export class GameEngine {
     }
   }
 
+  private updateZoneTracker(): void {
+    if (this.zones.length === 0) {
+      this.currentZoneIndex = 1;
+      return;
+    }
+    for (let i = 0; i < this.zones.length; i++) {
+      const z = this.zones[i];
+      if (this.player.x >= z.startX && this.player.x <= z.endX) {
+        this.currentZoneIndex = i + 1;
+        break;
+      }
+    }
+  }
+
   private update(dt: number): void {
-    this.arena.update(dt, this.mapId, this.platforms);
+    this.arena.update(dt, this.mapId, this.platforms, this.worldWidth);
 
     if (this.phase === 'TITLE_MENU') {
       this.player.animTime += dt;
       this.enemy.animTime += dt;
       this.updateScarf(this.player, dt);
       this.updateScarf(this.enemy, dt);
-      this.cameraX = WORLD_WIDTH * 0.5 + Math.sin(performance.now() * 0.0003) * 65;
+      this.cameraX = this.worldWidth * 0.5 + Math.sin(performance.now() * 0.0003) * 65;
       return;
     }
 
@@ -675,48 +844,52 @@ export class GameEngine {
     if (this.phase === 'PLAYING') {
       this.matchTime += dt;
       this.updatePlayerController(dt);
+      this.updateZoneTracker();
 
       if (this.mode === 'TUTORIAL') {
         this.updateTutorialLogic(dt);
       } else {
+        // Engage zone demon once player approaches within sight/combat distance
+        const distToEnemy = Math.abs(this.player.x - this.enemy.x);
+        if (!this.enemyEngaged && (distToEnemy <= 920 || this.enemy.hp < this.enemy.maxHp)) {
+          this.enemyEngaged = true;
+          if (this.isCurrentBossBattle) {
+            this.sound.playBossEntrance();
+          } else {
+            this.sound.playDemonRoar();
+          }
+          this.particles.spawnFloatingText(
+            this.enemy.x,
+            this.enemy.y - 135,
+            `${this.enemy.name.split('·')[0].trim()} ENGAGED!`,
+            '#fb7185',
+            1.2
+          );
+        }
+
+        const targets = [this.player, ...this.allies];
         const bdaSpawn = this.enemyAI.update(
           this.enemy,
-          [this.player, ...this.allies],
+          targets,
           dt,
           this.sound,
           this.particles,
-          this.cloneEnemy === null
+          this.cloneEnemy === null,
+          this.enemyEngaged
         );
-        if (bdaSpawn) {
-          if (bdaSpawn.triggerRoomShift) {
-            this.arena.triggerNakimeShift();
-            this.shakeIntensity = Math.max(this.shakeIntensity, 7);
-          }
-          if (typeof bdaSpawn.teleportToX === 'number') {
-            this.enemy.x = Math.max(ARENA_LEFT + 60, Math.min(ARENA_RIGHT - 60, bdaSpawn.teleportToX));
-            this.particles.spawnDust(this.enemy.x, this.enemy.y, 8, 0);
-          }
-          if (bdaSpawn.projectiles && bdaSpawn.projectiles.length > 0) {
-            for (const pSpec of bdaSpawn.projectiles) {
-              this.projectiles.push({ id: this.nextProjectileId++, ...pSpec });
-            }
-          } else if (bdaSpawn.projectile) {
-            this.projectiles.push({ id: this.nextProjectileId++, ...bdaSpawn.projectile });
-          }
-          if (bdaSpawn.spawnCloneArchetype && !this.cloneEnemy) {
-            const cloneTpl = DEMON_TEMPLATES[bdaSpawn.spawnCloneArchetype];
-            this.cloneEnemy = createDemonFighter(
-              {
-                archetype: bdaSpawn.spawnCloneArchetype,
-                name: cloneTpl.displayName,
-                subtitle: cloneTpl.rankLabel,
-                hpScale: 0.68,
-              },
-              99,
-              Math.max(ARENA_LEFT + 80, Math.min(ARENA_RIGHT - 80, this.enemy.x - this.enemy.facing * 120))
-            );
-            this.cloneAI.reset();
-          }
+        this.handleBdaSpawn(this.enemy, bdaSpawn);
+
+        if (this.partnerEnemy) {
+          const pBda = this.partnerAI.update(
+            this.partnerEnemy,
+            targets,
+            dt,
+            this.sound,
+            this.particles,
+            false,
+            this.enemyEngaged
+          );
+          this.handleBdaSpawn(this.partnerEnemy, pBda);
         }
 
         if (this.cloneEnemy) {
@@ -725,30 +898,40 @@ export class GameEngine {
           } else {
             const cloneBda = this.cloneAI.update(
               this.cloneEnemy,
-              [this.player, ...this.allies],
+              targets,
               dt,
               this.sound,
               this.particles,
-              false
+              false,
+              true
             );
-            if (cloneBda?.projectiles && cloneBda.projectiles.length > 0) {
-              for (const pSpec of cloneBda.projectiles) {
-                this.projectiles.push({ id: this.nextProjectileId++, ...pSpec });
-              }
-            } else if (cloneBda?.projectile) {
-              this.projectiles.push({ id: this.nextProjectileId++, ...cloneBda.projectile });
-            }
+            this.handleBdaSpawn(this.cloneEnemy, cloneBda);
           }
         }
 
+        const activeEnemies = [
+          this.enemy,
+          ...(this.partnerEnemy ? [this.partnerEnemy] : []),
+          ...(this.cloneEnemy ? [this.cloneEnemy] : []),
+        ];
         this.allies.forEach((ally, idx) => {
-          this.allyAIs[idx]?.update(ally, this.enemy, this.player, dt, this.sound, this.particles);
+          this.allyAIs[idx]?.update(
+            ally,
+            activeEnemies,
+            this.player,
+            idx,
+            dt,
+            this.sound,
+            this.particles,
+            this.enemyEngaged
+          );
         });
       }
     }
 
     this.updateFighter(this.player, dt);
     this.updateFighter(this.enemy, dt);
+    if (this.partnerEnemy) this.updateFighter(this.partnerEnemy, dt);
     if (this.cloneEnemy) this.updateFighter(this.cloneEnemy, dt);
     for (const ally of this.allies) {
       this.updateFighter(ally, dt);
@@ -779,6 +962,40 @@ export class GameEngine {
     }
   }
 
+  private handleBdaSpawn(source: Fighter, bdaSpawn: ReturnType<EnemyAI['update']>): void {
+    if (!bdaSpawn) return;
+    const rightBound = this.worldWidth - ARENA_LEFT;
+    if (bdaSpawn.triggerRoomShift) {
+      this.arena.triggerNakimeShift();
+      this.shakeIntensity = Math.max(this.shakeIntensity, 7);
+    }
+    if (typeof bdaSpawn.teleportToX === 'number') {
+      source.x = Math.max(ARENA_LEFT + 60, Math.min(rightBound - 60, bdaSpawn.teleportToX));
+      this.particles.spawnDust(source.x, source.y, 8, 0);
+    }
+    if (bdaSpawn.projectiles && bdaSpawn.projectiles.length > 0) {
+      for (const pSpec of bdaSpawn.projectiles) {
+        this.projectiles.push({ id: this.nextProjectileId++, ...pSpec });
+      }
+    } else if (bdaSpawn.projectile) {
+      this.projectiles.push({ id: this.nextProjectileId++, ...bdaSpawn.projectile });
+    }
+    if (bdaSpawn.spawnCloneArchetype && !this.cloneEnemy) {
+      const cloneTpl = DEMON_TEMPLATES[bdaSpawn.spawnCloneArchetype];
+      this.cloneEnemy = createDemonFighter(
+        {
+          archetype: bdaSpawn.spawnCloneArchetype,
+          name: cloneTpl.displayName,
+          subtitle: cloneTpl.rankLabel,
+          hpScale: 0.65,
+        },
+        99,
+        Math.max(ARENA_LEFT + 80, Math.min(rightBound - 80, source.x - source.facing * 120))
+      );
+      this.cloneAI.reset();
+    }
+  }
+
   private getComboSpec(step: number): AttackSpec {
     switch (step) {
       case 0:
@@ -803,7 +1020,6 @@ export class GameEngine {
       return;
     }
 
-    // Combo chaining buffer while in light attack recovery (up to 5-step combo ending in Quick Double Slash)
     if (p.state === 'LIGHT_ATTACK' && this.input.lightPressed && p.comboStep < 4) {
       p.queuedNextCombo = true;
     }
@@ -816,7 +1032,6 @@ export class GameEngine {
       p.state === 'FALL' ||
       p.state === 'BLOCK';
 
-    // Breathing Forms 1-5 (Energy Meter 10%..50%)
     if (this.input.formPressed > 0 && (canAct || p.state === 'LIGHT_ATTACK' || p.state === 'RUNNING_ATTACK')) {
       const idx = this.input.formPressed as 1 | 2 | 3 | 4 | 5;
       const cost = FORM_ENERGY_COSTS[idx];
@@ -864,7 +1079,6 @@ export class GameEngine {
       }
     }
 
-    // Dodge Roll / Dash
     if (this.input.dodgePressed && p.dodgeCooldown <= 0 && canAct) {
       const moveDir =
         this.input.left && !this.input.right ? -1 : this.input.right && !this.input.left ? 1 : p.facing;
@@ -885,18 +1099,16 @@ export class GameEngine {
 
     if (!canAct) return;
 
-    // Blocking (grounded)
     if (this.input.block && p.grounded) {
       if (p.state !== 'BLOCK') {
         this.beginStateTransition(p, 'BLOCK', 0.05);
-        p.stateTimer = 0; // reset timer for Perfect Parry window
+        p.stateTimer = 0;
       }
       p.vx *= 0.72;
       p.facing = this.enemy.x >= p.x ? 1 : -1;
       return;
     }
 
-    // Counterattack immediately after Perfect Parry / Dodge!
     if ((this.input.lightPressed || this.input.heavyPressed) && p.counterWindowTimer > 0 && p.grounded) {
       p.counterWindowTimer = 0;
       p.currentAttack = BASE_ATTACK_SPECS.COUNTER;
@@ -911,7 +1123,6 @@ export class GameEngine {
       return;
     }
 
-    // Heavy Attack (with ~2.0 second cooldown!)
     if (this.input.heavyPressed && p.grounded) {
       if (p.heavyCooldown > 0.05) {
         this.showWarning(`Heavy Attack ready in ${p.heavyCooldown.toFixed(1)}s`);
@@ -932,7 +1143,6 @@ export class GameEngine {
       }
     }
 
-    // Normal Sword Techniques: Aerial Jump Slash, Running Sword Slash, or 5-step Japanese Sword Combo
     if (this.input.lightPressed) {
       if (!p.grounded) {
         p.currentAttack = BASE_ATTACK_SPECS.JUMP;
@@ -969,14 +1179,18 @@ export class GameEngine {
       return;
     }
 
-    // Horizontal Footwork
+    // Horizontal Footwork (slightly faster traversal sprint when exploring between zones)
     const moveDir = (this.input.right ? 1 : 0) - (this.input.left ? 1 : 0);
     if (moveDir !== 0) {
       p.facing = moveDir as 1 | -1;
       this.runHoldTime += dt;
       const chillMult = p.chillTimer > 0 ? 0.68 : 1.0;
+      const exploreBoost = !this.enemyEngaged && this.runHoldTime > 0.35 ? 1.18 : 1.0;
       const targetSpeed =
-        (this.runHoldTime > 0.22 ? PLAYER_RUN_SPEED : PLAYER_WALK_SPEED) * p.speedMult * chillMult;
+        (this.runHoldTime > 0.2 ? PLAYER_RUN_SPEED : PLAYER_WALK_SPEED) *
+        p.speedMult *
+        chillMult *
+        exploreBoost;
       p.vx = moveDir * targetSpeed;
 
       if (this.mode === 'TUTORIAL' && this.tutorialStep === 3) {
@@ -989,7 +1203,6 @@ export class GameEngine {
       if (Math.abs(p.vx) < 8) p.vx = 0;
     }
 
-    // Jump
     if (p.jumpBufferTimer > 0 && (p.grounded || p.coyoteTimer > 0)) {
       p.vy = PLAYER_JUMP_VELOCITY;
       p.grounded = false;
@@ -1160,6 +1373,7 @@ export class GameEngine {
   }
 
   private updateFighter(f: Fighter, dt: number): void {
+    const rightBound = this.worldWidth - ARENA_LEFT;
     const isAttacking =
       f.state === 'LIGHT_ATTACK' ||
       f.state === 'HEAVY_ATTACK' ||
@@ -1204,9 +1418,8 @@ export class GameEngine {
       if (f.comboResetTimer <= 0) f.comboStep = 0;
     }
 
-    // HYBRID RAGDOLL STATE
     if (f.state === 'RAGDOLL' || f.state === 'DEFEATED') {
-      const res = stepRagdoll(f, dt);
+      const res = stepRagdoll(f, dt, ARENA_LEFT, rightBound);
       if (res.impactedGround) {
         this.sound.playRagdollThump();
         this.particles.spawnDust(f.x, GROUND_Y, 6, 0);
@@ -1341,7 +1554,6 @@ export class GameEngine {
             this.beginStateTransition(f, 'IDLE', 0.06);
           }
         } else if (f.y > obs.y + 8) {
-          // Blocked horizontally
           if (prevX <= obs.x - halfW + 4) {
             f.x = obs.x - halfW;
           } else if (prevX >= obs.x + obs.w + halfW - 4) {
@@ -1354,7 +1566,7 @@ export class GameEngine {
       }
     }
 
-    // Elevated ArenaPlatform landing collision (jump onto wooden decks, balconies, Infinity Castle tatami/stairs!)
+    // Elevated ArenaPlatform landing collision
     let landedOnSurface = false;
     if (f.vy >= 0) {
       for (const plat of this.platforms) {
@@ -1394,8 +1606,8 @@ export class GameEngine {
     if (f.x < ARENA_LEFT + margin) {
       f.x = ARENA_LEFT + margin;
       if (f.vx < 0) f.vx = 0;
-    } else if (f.x > ARENA_RIGHT - margin) {
-      f.x = ARENA_RIGHT - margin;
+    } else if (f.x > rightBound - margin) {
+      f.x = rightBound - margin;
       if (f.vx > 0) f.vx = 0;
     }
 
@@ -1426,87 +1638,99 @@ export class GameEngine {
   }
 
   private preventBodyOverlap(): void {
-    const fighters = [this.player, this.enemy];
-    const [a, b] = fighters;
-    if (
-      a.state === 'DODGE' ||
-      a.state === 'BREATHING_FORM' ||
-      a.state === 'RUNNING_ATTACK' ||
-      a.state === 'RAGDOLL' ||
-      b.state === 'RAGDOLL' ||
-      b.state === 'DEFEATED'
-    ) {
-      return;
-    }
-    const minDist = 42;
-    const dx = b.x - a.x;
-    const absDx = Math.abs(dx);
-    if (absDx < minDist && Math.abs(b.y - a.y) < 70) {
-      const push = (minDist - absDx) * 0.5;
-      const dir = dx >= 0 ? 1 : -1;
-      a.x = Math.max(ARENA_LEFT + 25, a.x - dir * push);
-      b.x = Math.min(ARENA_RIGHT - 25, b.x + dir * push);
+    const rightBound = this.worldWidth - ARENA_LEFT;
+    const activeTargets = [this.enemy, ...(this.partnerEnemy ? [this.partnerEnemy] : [])];
+    for (const b of activeTargets) {
+      const a = this.player;
+      if (
+        a.state === 'DODGE' ||
+        a.state === 'BREATHING_FORM' ||
+        a.state === 'RUNNING_ATTACK' ||
+        a.state === 'RAGDOLL' ||
+        b.state === 'RAGDOLL' ||
+        b.state === 'DEFEATED'
+      ) {
+        continue;
+      }
+      const minDist = 42;
+      const dx = b.x - a.x;
+      const absDx = Math.abs(dx);
+      if (absDx < minDist && Math.abs(b.y - a.y) < 70) {
+        const push = (minDist - absDx) * 0.5;
+        const dir = dx >= 0 ? 1 : -1;
+        a.x = Math.max(ARENA_LEFT + 25, a.x - dir * push);
+        b.x = Math.min(rightBound - 25, b.x + dir * push);
+      }
     }
   }
 
   private resolveAllCombat(): void {
-    // 1. Check mutual sword/strike clash
-    const clash = resolveSwordClash(this.player, this.enemy, this.particles, this.sound);
-    if (clash) {
-      this.hitstopTimer = Math.max(this.hitstopTimer, clash.hitstop);
-      this.shakeIntensity = Math.max(this.shakeIntensity, clash.shake);
+    const enemies = [
+      this.enemy,
+      ...(this.partnerEnemy ? [this.partnerEnemy] : []),
+      ...(this.cloneEnemy ? [this.cloneEnemy] : []),
+    ];
+
+    for (const foe of enemies) {
+      if (foe.hp <= 0) continue;
+      const clash = resolveSwordClash(this.player, foe, this.particles, this.sound);
+      if (clash) {
+        this.hitstopTimer = Math.max(this.hitstopTimer, clash.hitstop);
+        this.shakeIntensity = Math.max(this.shakeIntensity, clash.shake);
+      }
     }
 
-    // 2. Player vs Destructible Arena Obstacles
     for (const obs of this.obstacles) {
       resolveObstacleHit(this.player, obs, this.particles, this.sound);
       resolveObstacleHit(this.enemy, obs, this.particles, this.sound);
     }
 
-    // 3. Player vs Main Enemy
-    const pHit = resolveAttackHit(this.player, this.enemy, this.particles, this.sound);
-    if (pHit.landed) {
-      this.hitstopTimer = Math.max(this.hitstopTimer, pHit.hitstop);
-      this.shakeIntensity = Math.max(this.shakeIntensity, pHit.shake);
-      if (pHit.ragdollTriggered) this.ragdollHitsLanded += 1;
-      if (this.mode === 'TUTORIAL' && this.tutorialStep === 5) {
-        this.tutSlashes += 1;
+    for (const foe of enemies) {
+      if (foe.hp <= 0) continue;
+      const pHit = resolveAttackHit(this.player, foe, this.particles, this.sound);
+      if (pHit.landed) {
+        this.hitstopTimer = Math.max(this.hitstopTimer, pHit.hitstop);
+        this.shakeIntensity = Math.max(this.shakeIntensity, pHit.shake);
+        if (pHit.ragdollTriggered) this.ragdollHitsLanded += 1;
+        if (this.mode === 'TUTORIAL' && this.tutorialStep === 5) {
+          this.tutSlashes += 1;
+        }
       }
     }
 
-    // 4. Player vs Doma Ice Clone
-    if (this.cloneEnemy) {
-      const cHit = resolveAttackHit(this.player, this.cloneEnemy, this.particles, this.sound);
-      if (cHit.landed) {
-        this.hitstopTimer = Math.max(this.hitstopTimer, cHit.hitstop);
-        this.shakeIntensity = Math.max(this.shakeIntensity, cHit.shake);
-      }
-      resolveAttackHit(this.cloneEnemy, this.player, this.particles, this.sound);
-    }
-
-    // 5. Allies vs Enemy (Level 50)
+    // Allies vs all active enemies
     for (const ally of this.allies) {
-      const aHit = resolveAttackHit(ally, this.enemy, this.particles, this.sound);
-      if (aHit.landed) {
-        this.shakeIntensity = Math.max(this.shakeIntensity, aHit.shake * 0.5);
+      if (ally.hp <= 0) continue;
+      for (const foe of enemies) {
+        if (foe.hp <= 0) continue;
+        const aHit = resolveAttackHit(ally, foe, this.particles, this.sound);
+        if (aHit.landed) {
+          this.shakeIntensity = Math.max(this.shakeIntensity, aHit.shake * 0.45);
+        }
       }
     }
 
-    // 6. Enemy vs Player & Allies
-    const dHit = resolveAttackHit(this.enemy, this.player, this.particles, this.sound);
-    if (dHit.landed || dHit.blocked) {
-      this.hitstopTimer = Math.max(this.hitstopTimer, dHit.hitstop);
-      this.shakeIntensity = Math.max(this.shakeIntensity, dHit.shake);
-      if (dHit.blocked && this.mode === 'TUTORIAL' && this.tutorialStep === 6) {
-        this.tutBlocks += 1;
+    // Active enemies vs Player & Allies
+    for (const foe of enemies) {
+      if (foe.hp <= 0) continue;
+      const dHit = resolveAttackHit(foe, this.player, this.particles, this.sound);
+      if (dHit.landed || dHit.blocked) {
+        this.hitstopTimer = Math.max(this.hitstopTimer, dHit.hitstop);
+        this.shakeIntensity = Math.max(this.shakeIntensity, dHit.shake);
+        if (dHit.blocked && this.mode === 'TUTORIAL' && this.tutorialStep === 6) {
+          this.tutBlocks += 1;
+        }
       }
-    }
-    for (const ally of this.allies) {
-      resolveAttackHit(this.enemy, ally, this.particles, this.sound);
+      for (const ally of this.allies) {
+        if (ally.hp > 0) {
+          resolveAttackHit(foe, ally, this.particles, this.sound);
+        }
+      }
     }
   }
 
   private updateProjectiles(dt: number): void {
+    const rightBound = this.worldWidth - ARENA_LEFT;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const proj = this.projectiles[i];
       proj.life -= dt;
@@ -1523,7 +1747,7 @@ export class GameEngine {
         this.particles.spawnDust(proj.x, GROUND_Y, 4, 0);
       }
 
-      if (proj.life <= 0 || proj.x < ARENA_LEFT - 80 || proj.x > ARENA_RIGHT + 80) {
+      if (proj.life <= 0 || proj.x < ARENA_LEFT - 120 || proj.x > rightBound + 120) {
         this.projectiles.splice(i, 1);
         continue;
       }
@@ -1537,7 +1761,11 @@ export class GameEngine {
 
       const isPlayerProj = proj.ownerRole === 'player' || proj.ownerRole === 'ally';
       const targets = isPlayerProj
-        ? [this.enemy, ...(this.cloneEnemy ? [this.cloneEnemy] : [])]
+        ? [
+            this.enemy,
+            ...(this.partnerEnemy ? [this.partnerEnemy] : []),
+            ...(this.cloneEnemy ? [this.cloneEnemy] : []),
+          ]
         : [this.player, ...this.allies];
 
       for (const t of targets) {
@@ -1554,7 +1782,13 @@ export class GameEngine {
             this.particles.spawnParrySparks(proj.x, proj.y, false);
             this.sound.playParry();
           } else {
-            this.particles.spawnHitBurst(proj.x, proj.y, proj.vx >= 0 ? 1 : -1, proj.triggeredRagdoll, t.role === 'demon');
+            this.particles.spawnHitBurst(
+              proj.x,
+              proj.y,
+              proj.vx >= 0 ? 1 : -1,
+              proj.triggeredRagdoll,
+              t.role === 'demon'
+            );
             this.sound.playHit(proj.triggeredRagdoll);
             this.particles.spawnFloatingText(t.x, t.y - t.height - 12, `-${dmg}`, '#fde047', 0.95);
             if (proj.kind === 'blood_sickle' || (proj.poisonDps && proj.poisonDps > 0)) {
@@ -1576,28 +1810,48 @@ export class GameEngine {
   }
 
   private checkWaveOrMatchOutcome(): void {
-    if (this.enemy.hp <= 0) {
-      this.killsThisRun += 1;
+    // Keep knocked-down partner visibly defeated cleanly while waiting on primary enemy
+    if (this.partnerEnemy && this.partnerEnemy.hp <= 0 && !this.partnerEnemy.ragdoll.active) {
+      activateRagdoll(this.partnerEnemy, evaluateFighterPose(this.partnerEnemy), this.player.facing * 240, -240, true);
+    }
+    if (this.enemy.hp <= 0 && !this.enemy.ragdoll.active && this.partnerEnemy && this.partnerEnemy.hp > 0) {
+      activateRagdoll(this.enemy, evaluateFighterPose(this.enemy), this.player.facing * 240, -240, true);
+    }
+
+    const waveCleared = this.enemy.hp <= 0 && (!this.partnerEnemy || this.partnerEnemy.hp <= 0);
+
+    if (waveCleared) {
+      this.killsThisRun += this.partnerEnemy ? 2 : 1;
       if (this.mode === 'STORY' && this.waveIndex + 1 < this.currentLevel.enemies.length) {
         this.waveIndex += 1;
         const nextSpawn = this.currentLevel.enemies[this.waveIndex];
-        const spawnX = this.player.x > WORLD_WIDTH * 0.5 ? ARENA_LEFT + 130 : ARENA_RIGHT - 130;
-        this.enemy = createDemonFighter(nextSpawn, this.waveIndex, spawnX);
+        const zoneSpawnX = Math.max(
+          Math.min(this.worldWidth - 360, this.player.x + 620),
+          this.getWaveSpawnX(this.waveIndex, this.currentLevel.enemies.length)
+        );
+        this.spawnWaveFighters(nextSpawn, this.waveIndex, zoneSpawnX);
         this.isCurrentBossBattle = this.isCurrentBossBattle || Boolean(nextSpawn.isBoss);
         this.cloneEnemy = null;
         this.enemyAI.reset();
         this.projectiles = [];
+        this.enemyEngaged = Math.abs(zoneSpawnX - this.player.x) < 900;
         if (nextSpawn.isBoss) {
-          this.sound.playBossEntrance();
-          this.sound.setMapTheme(this.mapId, true);
-        } else {
+          this.sound.setMusicContext(
+            'gameplay',
+            this.mapId,
+            true,
+            nextSpawn.archetype,
+            this.activeCampaignCharId
+          );
+          if (this.enemyEngaged) this.sound.playBossEntrance();
+        } else if (this.enemyEngaged) {
           this.sound.playDemonRoar();
         }
         this.particles.spawnFloatingText(
-          this.enemy.x,
-          this.enemy.y - 125,
-          `${nextSpawn.name} Appears!`,
-          '#fb7185',
+          this.player.x + 80,
+          this.player.y - 130,
+          this.enemyEngaged ? `${nextSpawn.name} Appears!` : `Zone Cleared! Advance East →`,
+          '#38bdf8',
           1.15
         );
         this.emitHudSnapshot();
@@ -1606,6 +1860,7 @@ export class GameEngine {
 
       this.phase = 'VICTORY';
       this.enemy.currentAttack = null;
+      this.partnerEnemy = null;
       this.cloneEnemy = null;
       if (!this.enemy.ragdoll.active) {
         activateRagdoll(this.enemy, evaluateFighterPose(this.enemy), this.player.facing * 290, -260, true);
@@ -1646,9 +1901,44 @@ export class GameEngine {
   }
 
   private updateCamera(dt: number): void {
-    const midX = (this.player.x + this.enemy.x) * 0.5;
-    const clampedTarget = Math.max(360, Math.min(WORLD_WIDTH - 360, midX));
+    const aliveTarget =
+      this.enemy.hp > 0
+        ? this.enemy
+        : this.partnerEnemy && this.partnerEnemy.hp > 0
+          ? this.partnerEnemy
+          : this.enemy;
+
+    let targetX = this.player.x + this.player.facing * 140;
+    let targetZoom = 1.0;
+
+    if (this.mode === 'TUTORIAL') {
+      targetX = (this.player.x + aliveTarget.x) * 0.5;
+      targetZoom = 1.02;
+    } else if (this.enemyEngaged && aliveTarget.hp > 0) {
+      const dist = Math.abs(this.player.x - aliveTarget.x);
+      targetX = (this.player.x * 0.55 + aliveTarget.x * 0.45);
+      if (this.player.state === 'BREATHING_FORM' || aliveTarget.state === 'BDA_CAST') {
+        targetZoom = 1.12;
+      } else if (dist < 230) {
+        targetZoom = 1.08 + (this.enemy.bossPhase >= 2 ? 0.04 : 0);
+      } else if (dist > 550) {
+        targetZoom = 0.94;
+      } else {
+        targetZoom = 1.02;
+      }
+    } else {
+      // Wide cinematic pan when traversing huge multi-zone maps
+      targetZoom = Math.abs(this.player.vx) > 220 ? 0.93 : 0.98;
+    }
+
+    const baseScale = Math.max(0.54, Math.min(1.18, this.viewH / WORLD_HEIGHT)) * targetZoom;
+    const halfViewWorld = Math.max(360, (this.viewW * 0.5) / baseScale);
+    const clampedTarget = Math.max(
+      halfViewWorld,
+      Math.min(Math.max(halfViewWorld, this.worldWidth - halfViewWorld), targetX)
+    );
     this.cameraX += (clampedTarget - this.cameraX) * Math.min(1, dt * 6.5);
+    this.cameraZoom += (targetZoom - this.cameraZoom) * Math.min(1, dt * 3.8);
   }
 
   private render(): void {
@@ -1658,16 +1948,27 @@ export class GameEngine {
 
     this.arena.renderBackground(ctx, this.mapId, this.cameraX, this.viewW, this.viewH);
 
-    const scale = Math.max(0.54, Math.min(1.18, this.viewH / WORLD_HEIGHT));
+    const baseScale = Math.max(0.54, Math.min(1.18, this.viewH / WORLD_HEIGHT));
+    const scale = baseScale * this.cameraZoom;
     const shakeX = this.shakeIntensity > 0 ? (Math.random() - 0.5) * 2 * this.shakeIntensity : 0;
     const shakeY = this.shakeIntensity > 0 ? (Math.random() - 0.5) * 2 * this.shakeIntensity : 0;
+    const groundAnchorOffsetY = this.viewH * 0.83 - GROUND_Y * scale;
 
     ctx.save();
-    ctx.translate(this.viewW * 0.5 + shakeX, this.viewH - WORLD_HEIGHT * scale + shakeY);
+    ctx.translate(this.viewW * 0.5 + shakeX, groundAnchorOffsetY + shakeY);
     ctx.scale(scale, scale);
     ctx.translate(-this.cameraX, 0);
 
-    this.arena.renderWorldBehindCharacters(ctx, this.mapId, this.platforms, this.obstacles);
+    this.arena.renderWorldBehindCharacters(
+      ctx,
+      this.mapId,
+      this.platforms,
+      this.obstacles,
+      this.cameraX,
+      this.worldWidth,
+      this.waterZones,
+      this.decors
+    );
 
     if (this.mode === 'TUTORIAL') {
       renderTrainingRock(ctx, this.rockX, GROUND_Y, this.rockHp, this.rockMaxHp);
@@ -1681,11 +1982,15 @@ export class GameEngine {
       renderFighter(ctx, this.cloneEnemy, evaluateFighterPose(this.cloneEnemy));
     }
 
+    if (this.partnerEnemy) {
+      renderFighter(ctx, this.partnerEnemy, evaluateFighterPose(this.partnerEnemy));
+    }
+
     renderFighter(ctx, this.enemy, evaluateFighterPose(this.enemy));
     renderFighter(ctx, this.player, evaluateFighterPose(this.player));
 
     this.particles.render(ctx, this.projectiles);
-    this.arena.renderWorldForeground(ctx, this.mapId);
+    this.arena.renderWorldForeground(ctx, this.mapId, this.cameraX, this.worldWidth);
 
     ctx.restore();
     ctx.restore();
@@ -1693,6 +1998,12 @@ export class GameEngine {
 
   public emitHudSnapshot(): void {
     const stepDef = TUTORIAL_STEPS[Math.min(TUTORIAL_STEPS.length - 1, this.tutorialStep - 1)];
+    const currentZone = this.zones[this.currentZoneIndex - 1];
+    const advancePrompt =
+      this.mode === 'STORY' && !this.enemyEngaged && this.enemy.hp > 0
+        ? `Advance East (${Math.max(1, Math.round((this.enemy.x - this.player.x) / 40))}m) → ${this.enemy.name.split('·')[0].trim()}`
+        : null;
+
     this.callbacks.onHudUpdate({
       phase: this.phase,
       mode: this.mode,
@@ -1726,9 +2037,23 @@ export class GameEngine {
       enemyWaveTotal: this.mode === 'STORY' ? this.currentLevel.enemies.length : 1,
       bossPhase: this.enemy.bossPhase,
       isBossBattle: this.isCurrentBossBattle,
-      enemyTelegraph: this.mode === 'TUTORIAL' ? null : this.enemyAI.getTelegraph(),
+      enemyTelegraph:
+        this.mode === 'TUTORIAL'
+          ? null
+          : this.enemyAI.getTelegraph() ?? (this.partnerEnemy ? this.partnerAI.getTelegraph() : null),
+
+      partnerEnemyName: this.partnerEnemy ? this.partnerEnemy.name : null,
+      partnerEnemyHp: this.partnerEnemy ? this.partnerEnemy.hp : 0,
+      partnerEnemyMaxHp: this.partnerEnemy ? this.partnerEnemy.maxHp : 0,
 
       allies: this.allies.map((a) => ({ name: a.name, hp: a.hp, maxHp: a.maxHp })),
+
+      zoneIndex: this.currentZoneIndex,
+      zoneTotal: Math.max(1, this.zones.length),
+      zoneName: currentZone?.name ?? MAP_DISPLAY_NAMES[this.mapId],
+      advancePrompt,
+      playerWorldX: this.player.x,
+      worldWidth: this.worldWidth,
 
       tutorialStep: this.tutorialStep,
       tutorialTitle: stepDef.title,

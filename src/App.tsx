@@ -13,24 +13,32 @@ import { GameOverlays } from './components/GameOverlays';
 import { MobileControls } from './components/MobileControls';
 import { RosterShopModal } from './components/RosterShopModal';
 import { SettingsModal } from './components/SettingsModal';
-import { StoryGalleryModal } from './components/StoryGalleryModal';
 import { SoundEngine } from './game/audio';
-import { buildCutsceneForPlayer, CUTSCENES, getLevelById } from './game/campaign';
+import {
+  buildCutsceneForPlayer,
+  CUTSCENES,
+  getCampaignForCharacter,
+  getCharacterCampaignInfo,
+} from './game/campaign';
 import { HEAVY_ATTACK_COOLDOWN } from './game/constants';
 import { GameEngine } from './game/engine';
 import {
+  getCharacterProfile,
   loadSaveData,
   markCutsceneSeen,
   purchaseCharacter,
   recordLevelVictory,
   recordTutorialCompleted,
   selectCharacterAndBreathing,
+  selectCharacterSkin,
   updateAudioSettings,
+  upgradeCharacterStat,
   writeSaveData,
 } from './game/save';
 import {
   AudioSettings,
   BreathingStyleId,
+  CharacterUpgrades,
   CutsceneDef,
   DemonArchetype,
   HudSnapshot,
@@ -66,7 +74,16 @@ const INITIAL_HUD: HudSnapshot = {
   bossPhase: 1,
   isBossBattle: false,
   enemyTelegraph: null,
+  partnerEnemyName: null,
+  partnerEnemyHp: 0,
+  partnerEnemyMaxHp: 0,
   allies: [],
+  zoneIndex: 1,
+  zoneTotal: 4,
+  zoneName: 'Bamboo Edge',
+  advancePrompt: null,
+  playerWorldX: 680,
+  worldWidth: 9600,
   tutorialStep: 1,
   tutorialTitle: 'Arrival at Mt. Sagiri',
   tutorialInstruction: 'Move forward or tap Slash/Continue to begin your trial.',
@@ -103,7 +120,6 @@ export default function App() {
   >(null);
   const [showShop, setShowShop] = useState(false);
   const [showEncyclopedia, setShowEncyclopedia] = useState(false);
-  const [showStoryGallery, setShowStoryGallery] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activeCutscene, setActiveCutscene] = useState<ActiveCutsceneState | null>(null);
   const fallbackSoundRef = useRef<SoundEngine | null>(null);
@@ -129,30 +145,44 @@ export default function App() {
         if (levelId > 0) {
           updated = recordLevelVictory(saveRef.current, levelId, rank, coinsEarned, kills);
         } else {
+          const prof = getCharacterProfile(saveRef.current, saveRef.current.selectedCharacterId);
+          const nextProfiles = {
+            ...saveRef.current.characterProfiles,
+            [saveRef.current.selectedCharacterId]: {
+              ...prof,
+              coins: prof.coins + coinsEarned,
+            },
+          };
           updated = {
             ...saveRef.current,
             coins: saveRef.current.coins + coinsEarned,
             totalDemonsDefeated: saveRef.current.totalDemonsDefeated + kills,
+            characterProfiles: nextProfiles,
           };
           writeSaveData(updated);
         }
         setSave(updated);
         engine.setCoinsBalance(updated.coins);
 
-        if (levelId === 50 && CUTSCENES.cs_ending) {
-          const skip = updated.skipSeenCutscenes && updated.seenCutscenes.includes('cs_ending');
-          if (!skip) {
-            setActiveCutscene({
-              cutscene: buildCutsceneForPlayer(
-                'cs_ending',
-                updated.selectedCharacterId,
-                updated.selectedBreathing
-              ),
-              onDone: () => {
-                setSave((prev) => markCutsceneSeen(prev, 'cs_ending'));
-                setActiveCutscene(null);
-              },
-            });
+        if (levelId > 0) {
+          const campaign = getCampaignForCharacter(updated.selectedCharacterId);
+          const lvlDef = campaign.find((l) => l.id === levelId);
+          const postId = lvlDef?.postCutsceneId ?? (levelId === 50 ? 'cs_ending' : undefined);
+          if (postId && CUTSCENES[postId]) {
+            const skip = updated.skipSeenCutscenes && updated.seenCutscenes.includes(postId);
+            if (!skip) {
+              setActiveCutscene({
+                cutscene: buildCutsceneForPlayer(
+                  postId,
+                  updated.selectedCharacterId,
+                  updated.selectedBreathing
+                ),
+                onDone: () => {
+                  setSave((prev) => markCutsceneSeen(prev, postId));
+                  setActiveCutscene(null);
+                },
+              });
+            }
           }
         }
       },
@@ -239,7 +269,6 @@ export default function App() {
     setShowCharSelect(false);
     setShowShop(false);
     setShowEncyclopedia(false);
-    setShowStoryGallery(false);
     setShowSettings(false);
   };
 
@@ -251,12 +280,12 @@ export default function App() {
         activeCutscene.onDone();
         return;
       }
-      if (showSettings || showStoryGallery || showEncyclopedia || showShop || showCampaign || showCharSelect) {
+      if (showSettings || showEncyclopedia || showShop || showCampaign || showCharSelect) {
         const wasCharSelect = showCharSelect;
         closeAllModals();
         setPendingAfterCharSelect(null);
         if (wasCharSelect && engineRef.current?.phase === 'TITLE_MENU') {
-          engineRef.current.setMenuMusicTheme('menu');
+          engineRef.current.setMenuMusicTheme('menu', saveRef.current.selectedCharacterId);
         }
         return;
       }
@@ -278,7 +307,6 @@ export default function App() {
   }, [
     activeCutscene,
     showSettings,
-    showStoryGallery,
     showEncyclopedia,
     showShop,
     showCampaign,
@@ -309,16 +337,30 @@ export default function App() {
 
   const launchTutorialWith = (charId: string, breathing: BreathingStyleId) => {
     closeAllModals();
-    maybePlayCutscene('cs_opening', () => {
-      engineRef.current?.startTutorial(charId, breathing);
+    const campaignInfo = getCharacterCampaignInfo(charId);
+    const prof = getCharacterProfile(saveRef.current, charId);
+    maybePlayCutscene(campaignInfo.prologueCutsceneId || 'cs_opening', () => {
+      engineRef.current?.startTutorial(charId, breathing, prof.upgrades, prof.selectedSkinId);
     });
   };
 
   const launchStoryLevelWith = (levelId: number, charId: string, breathing: BreathingStyleId) => {
     closeAllModals();
-    const levelDef = getLevelById(levelId);
-    maybePlayCutscene(levelDef.cutsceneId, () => {
-      engineRef.current?.startStoryLevel(levelId, charId, breathing);
+    const campaign = getCampaignForCharacter(charId);
+    const campaignInfo = getCharacterCampaignInfo(charId);
+    const levelDef = campaign.find((l) => l.id === levelId) ?? campaign[0];
+    const prof = getCharacterProfile(saveRef.current, charId);
+    const preCutsceneId =
+      levelDef.cutsceneId ?? (levelId === 1 ? campaignInfo.prologueCutsceneId : undefined);
+    maybePlayCutscene(preCutsceneId, () => {
+      engineRef.current?.startStoryLevel(
+        levelId,
+        charId,
+        breathing,
+        levelDef,
+        prof.upgrades,
+        prof.selectedSkinId
+      );
     });
   };
 
@@ -327,7 +369,7 @@ export default function App() {
       setPendingAfterCharSelect(() => (charId: string, breathing: BreathingStyleId) => {
         launchTutorialWith(charId, breathing);
       });
-      engineRef.current?.setMenuMusicTheme('char_select');
+      engineRef.current?.setMenuMusicTheme('char_select', save.selectedCharacterId);
       setShowCharSelect(true);
       return;
     }
@@ -339,7 +381,7 @@ export default function App() {
       setPendingAfterCharSelect(() => (charId: string, breathing: BreathingStyleId) => {
         launchStoryLevelWith(levelId, charId, breathing);
       });
-      engineRef.current?.setMenuMusicTheme('char_select');
+      engineRef.current?.setMenuMusicTheme('char_select', save.selectedCharacterId);
       setShowCharSelect(true);
       return;
     }
@@ -360,29 +402,34 @@ export default function App() {
     breathing: BreathingStyleId
   ) => {
     closeAllModals();
+    const prof = getCharacterProfile(saveRef.current, saveRef.current.selectedCharacterId);
     engineRef.current?.startPracticeMatch(
       mapId,
       demon,
-      save.selectedCharacterId,
-      breathing
+      saveRef.current.selectedCharacterId,
+      breathing,
+      prof.upgrades,
+      prof.selectedSkinId
     );
   };
 
   const handleSelectCharacter = (charId: string, breathing?: BreathingStyleId) => {
     const updated = selectCharacterAndBreathing(save, charId, breathing, true);
     setSave(updated);
+    engineRef.current?.setCoinsBalance(updated.coins);
   };
 
   const handleConfirmCharSelect = (charId: string, breathing: BreathingStyleId) => {
     const updated = selectCharacterAndBreathing(save, charId, breathing, true);
     setSave(updated);
+    engineRef.current?.setCoinsBalance(updated.coins);
     setShowCharSelect(false);
     if (pendingAfterCharSelect) {
       const next = pendingAfterCharSelect;
       setPendingAfterCharSelect(null);
       next(charId, breathing);
     } else if (engineRef.current?.phase === 'TITLE_MENU') {
-      engineRef.current.setMenuMusicTheme('menu');
+      engineRef.current.setMenuMusicTheme('menu', charId);
     }
   };
 
@@ -393,6 +440,20 @@ export default function App() {
       engineRef.current?.setCoinsBalance(res.save.coins);
     }
     return { ok: res.ok, message: res.message };
+  };
+
+  const handleUpgradeStat = (charId: string, stat: keyof CharacterUpgrades) => {
+    const res = upgradeCharacterStat(save, charId, stat);
+    if (res.ok) {
+      setSave(res.save);
+      engineRef.current?.setCoinsBalance(res.save.coins);
+    }
+    return { ok: res.ok, message: res.message };
+  };
+
+  const handleSelectSkin = (charId: string, skinId: string) => {
+    const updated = selectCharacterSkin(save, charId, skinId);
+    setSave(updated);
   };
 
   const handleUpdateAudio = (audio: AudioSettings) => {
@@ -448,17 +509,19 @@ export default function App() {
           onOpenCampaign={() => setShowCampaign(true)}
           onOpenCharSelect={() => {
             setPendingAfterCharSelect(null);
-            engineRef.current?.setMenuMusicTheme('char_select');
+            engineRef.current?.setMenuMusicTheme('char_select', save.selectedCharacterId);
             setShowCharSelect(true);
           }}
           onOpenShop={() => setShowShop(true)}
           onStartTutorial={handleStartTutorial}
           onOpenEncyclopedia={() => setShowEncyclopedia(true)}
-          onOpenStoryGallery={() => setShowStoryGallery(true)}
           onOpenSettings={() => setShowSettings(true)}
           onQuickPlayStory={() => handleStartStoryLevel(save.highestUnlockedLevel)}
           onResume={() => engineRef.current?.togglePause()}
-          onRestart={() => engineRef.current?.restartCurrentBattle()}
+          onRestart={() => {
+            const prof = getCharacterProfile(save, save.selectedCharacterId);
+            engineRef.current?.restartCurrentBattle(prof.upgrades, prof.selectedSkinId);
+          }}
           onNextLevel={() => handleStartStoryLevel(Math.min(50, hud.levelId + 1))}
           onReturnTitle={() => engineRef.current?.returnToTitle()}
         />
@@ -471,14 +534,14 @@ export default function App() {
           subtitle={
             pendingAfterCharSelect
               ? 'Choose your starting Slayer before entering battle.'
-              : 'Select your active Slayer, Breathing Style, and story route.'
+              : 'Select your active Slayer, Breathing Style, and independent campaign save.'
           }
           confirmLabel={pendingAfterCharSelect ? 'Confirm Slayer & Enter Battle' : undefined}
           onClose={() => {
             setShowCharSelect(false);
             setPendingAfterCharSelect(null);
             if (engineRef.current?.phase === 'TITLE_MENU') {
-              engineRef.current.setMenuMusicTheme('menu');
+              engineRef.current.setMenuMusicTheme('menu', save.selectedCharacterId);
             }
           }}
           onConfirmSelect={handleConfirmCharSelect}
@@ -496,13 +559,15 @@ export default function App() {
         />
       )}
 
-      {/* 15-Slayer Roster & Coin Shop Modal */}
+      {/* 15-Slayer Roster, Upgrades & Coin Shop Modal */}
       {showShop && (
         <RosterShopModal
           save={save}
           onClose={() => setShowShop(false)}
           onSelectCharacter={handleSelectCharacter}
           onBuyCharacter={handleBuyCharacter}
+          onUpgradeStat={handleUpgradeStat}
+          onSelectSkin={handleSelectSkin}
         />
       )}
 
@@ -516,32 +581,6 @@ export default function App() {
         />
       )}
 
-      {/* Story Cutscene Gallery Modal */}
-      {showStoryGallery && (
-        <StoryGalleryModal
-          save={save}
-          onClose={() => setShowStoryGallery(false)}
-          onPlayCutscene={(cutsceneId) => {
-            setShowStoryGallery(false);
-            const personalized = buildCutsceneForPlayer(
-              cutsceneId,
-              save.selectedCharacterId,
-              save.selectedBreathing
-            );
-            setActiveCutscene({
-              cutscene: personalized,
-              onDone: () => {
-                setSave((prev) => markCutsceneSeen(prev, cutsceneId));
-                setActiveCutscene(null);
-                if (engineRef.current?.phase === 'TITLE_MENU') {
-                  engineRef.current.setMenuMusicTheme('menu');
-                }
-              },
-            });
-          }}
-        />
-      )}
-
       {/* Audio & Cutscene Settings Modal */}
       {showSettings && (
         <SettingsModal
@@ -551,8 +590,9 @@ export default function App() {
           onToggleSkipSeenCutscenes={handleToggleSkipSeenCutscenes}
           onReplayPrologue={() => {
             setShowSettings(false);
+            const campaignInfo = getCharacterCampaignInfo(save.selectedCharacterId);
             const personalized = buildCutsceneForPlayer(
-              'cs_opening',
+              campaignInfo.prologueCutsceneId || 'cs_opening',
               save.selectedCharacterId,
               save.selectedBreathing
             );
@@ -561,7 +601,7 @@ export default function App() {
               onDone: () => {
                 setActiveCutscene(null);
                 if (engineRef.current?.phase === 'TITLE_MENU') {
-                  engineRef.current.setMenuMusicTheme('menu');
+                  engineRef.current.setMenuMusicTheme('menu', save.selectedCharacterId);
                 }
               },
             });

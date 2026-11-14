@@ -241,7 +241,7 @@ export class CutsceneEngine {
     this.subtitlesEnabled = subtitlesEnabled;
     this.onComplete = onComplete;
 
-    const layout = createArenaLayout(cutscene.mapId);
+    const layout = createArenaLayout(cutscene.mapId, true);
     this.platforms = layout.platforms;
     this.obstacles = layout.obstacles;
 
@@ -253,7 +253,7 @@ export class CutsceneEngine {
     }
 
     this.resize();
-    this.sound.setMapTheme(cutscene.mapId, cutscene.id.includes('muzan') || cutscene.id.includes('akaza'));
+    this.sound.setMusicContext('cutscene', cutscene.mapId, false, undefined, first?.actors[0]?.characterId);
     this.lastTs = performance.now();
     this.rafId = requestAnimationFrame(this.loop);
   }
@@ -316,6 +316,9 @@ export class CutsceneEngine {
       fighter.facing = cue.facing;
       fighter.state = actionToFighterState(cue.action);
       fighter.stateTimer = 0;
+      if (cue.emotion) {
+        fighter.subtitle = `__emo:${cue.emotion}`;
+      }
       if (cue.action === 'breathing') {
         fighter.currentAttack = {
           kind: 'BREATHING_1',
@@ -369,7 +372,7 @@ export class CutsceneEngine {
   };
 
   private update(dt: number): void {
-    this.arena.update(dt, this.cutscene.mapId, this.platforms);
+    this.arena.update(dt, this.cutscene.mapId, this.platforms, WORLD_WIDTH);
     this.particles.update(dt);
     this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 28);
 
@@ -481,7 +484,14 @@ export class CutsceneEngine {
     ctx.scale(baseScale, baseScale);
     ctx.translate(-this.cameraX, 0);
 
-    this.arena.renderWorldBehindCharacters(ctx, this.cutscene.mapId, this.platforms, this.obstacles);
+    this.arena.renderWorldBehindCharacters(
+      ctx,
+      this.cutscene.mapId,
+      this.platforms,
+      this.obstacles,
+      this.cameraX,
+      WORLD_WIDTH
+    );
 
     if (this.cutscene.id === 'cs_tutorial_boulder') {
       renderTrainingRock(ctx, 1080, GROUND_Y, this.beatIndex >= 1 ? 0 : 100, 100);
@@ -497,7 +507,7 @@ export class CutsceneEngine {
     }
 
     this.particles.render(ctx, []);
-    this.arena.renderWorldForeground(ctx, this.cutscene.mapId);
+    this.arena.renderWorldForeground(ctx, this.cutscene.mapId, this.cameraX, WORLD_WIDTH);
 
     // Speech Bubbles anchored directly over speaking characters
     if (beat) {
