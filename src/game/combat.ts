@@ -224,6 +224,9 @@ export function resolveAttackHit(
     if (perfectParry) {
       defender.counterWindowTimer = defender.characterId === 'kanao' ? 1.15 : 0.85;
       defender.energy = Math.min(defender.maxEnergy, defender.energy + 12);
+      if (defender.role === 'player' && !defender.awakeningActive) {
+        defender.awakeningMeter = Math.min(100, defender.awakeningMeter + 9.5);
+      }
       particles.spawnFloatingText(defender.x, defender.y - defender.height - 16, 'PERFECT PARRY!', '#fde047', 1.15);
       sound.playSwordClash();
     } else {
@@ -250,31 +253,48 @@ export function resolveAttackHit(
     return result;
   }
 
-  // Clean hit with defense mitigation
-  const defReduction =
+  // Clean hit with defense mitigation + Awakening bonuses
+  const defReduction = Math.min(
+    0.58,
     defender.role === 'demon' && defender.demonArchetype
       ? DEMON_TEMPLATES[defender.demonArchetype].defense
-      : defender.characterId === 'genya'
-        ? 0.12
-        : 0;
+      : defender.defenseReduction ?? (defender.characterId === 'genya' ? 0.12 : 0)
+  );
+  const hasTransparent =
+    attacker.awakeningActive &&
+    (attacker.awakeningTier === 'transparent_world' || attacker.awakeningTier === 'transcendent');
+  const hasRedBlade =
+    attacker.awakeningActive &&
+    (attacker.awakeningTier === 'red_blade' || attacker.awakeningTier === 'transcendent');
+
+  const critMult = hasTransparent ? 1.22 : 1.0;
   const finalDamage = Math.max(
     1,
-    Math.round(spec.damage * attacker.damageMult * (1 - defReduction))
+    Math.round(spec.damage * attacker.damageMult * critMult * (1 - defReduction))
   );
   defender.hp = Math.max(0, defender.hp - finalDamage);
   defender.damageTaken += finalDamage;
   defender.hitFlashTimer = 0.16;
+  defender.consecutiveHitsTaken = (defender.consecutiveHitsTaken ?? 0) + 1;
+  defender.consecutiveHitTimer = 1.65;
   attacker.hitCount += 1;
   attacker.energy = Math.min(attacker.maxEnergy, attacker.energy + 4.5);
+  if (attacker.role === 'player' && !attacker.awakeningActive) {
+    const meterGain = spec.kind === 'ULTIMATE_ATTACK' ? 0 : spec.triggersRagdoll ? 8.5 : 5.5;
+    attacker.awakeningMeter = Math.min(100, attacker.awakeningMeter + meterGain);
+  }
 
   if (spec.poisonDps && spec.poisonDps > 0) {
     defender.poisonTimer = 4.0;
     defender.poisonDps = spec.poisonDps;
   }
+  if (hasRedBlade && defender.role === 'demon') {
+    defender.redBladeBurnTimer = 4.5;
+  }
 
   const isLethal = defender.hp <= 0;
   const isBreathing = attacker.state === 'BREATHING_FORM';
-  const isHeavy = spec.triggersRagdoll || isLethal;
+  const isHeavy = spec.triggersRagdoll || isLethal || spec.kind === 'ULTIMATE_ATTACK';
 
   sound.playHit(isHeavy);
   particles.spawnHitBurst(hitX, hitY, attacker.facing, isHeavy, defender.role === 'demon');
@@ -282,9 +302,13 @@ export function resolveAttackHit(
   particles.spawnFloatingText(
     defender.x,
     defender.y - defender.height - 16,
-    isBreathing ? `-${finalDamage}!` : `-${finalDamage}`,
-    isBreathing ? '#38bdf8' : isHeavy ? '#fbbf24' : '#f8fafc',
-    isBreathing ? 1.25 : isHeavy ? 1.15 : 0.95
+    hasTransparent
+      ? `-${finalDamage} WEAK POINT!`
+      : isBreathing
+        ? `-${finalDamage}!`
+        : `-${finalDamage}`,
+    hasTransparent ? '#38bdf8' : isBreathing ? '#38bdf8' : isHeavy ? '#fbbf24' : '#f8fafc',
+    hasTransparent || isBreathing ? 1.25 : isHeavy ? 1.15 : 0.95
   );
 
   if (isHeavy) {

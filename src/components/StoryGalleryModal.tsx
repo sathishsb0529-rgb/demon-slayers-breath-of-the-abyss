@@ -1,4 +1,4 @@
-import { Check, Film, Play, X } from 'lucide-react';
+import { ArrowLeft, Check, Film, Play } from 'lucide-react';
 import { CUTSCENES, MAP_DISPLAY_NAMES } from '../game/campaign';
 import { SaveData } from '../game/types';
 
@@ -20,27 +20,29 @@ export function StoryGalleryModal({
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-3 sm:p-6">
       <div className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-700/90 bg-slate-900 shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3.5 sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <Film className="h-5 w-5 text-sky-400" />
-            <div>
-              <h2 className="font-display text-lg font-bold text-white sm:text-xl">
-                Story Cutscene Gallery ({ORDERED_CUTSCENES.length} Episodes)
-              </h2>
-              <p className="text-xs text-slate-400">
-                Replay any animated battle prologue or boss confrontation with your selected Slayer.
-              </p>
+        {/* Header with Top-Left Back Button */}
+        <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100 hover:border-sky-400 hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4 text-sky-300" />
+              <span>Back</span>
+            </button>
+            <div className="flex items-center gap-2.5">
+              <Film className="hidden h-5 w-5 text-sky-400 sm:block" />
+              <div>
+                <h2 className="font-display text-base font-bold text-white sm:text-xl">
+                  Story Cutscene Gallery ({ORDERED_CUTSCENES.length} Episodes)
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Replay any animated battle prologue or boss confrontation with your selected Slayer.
+                </p>
+              </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-11 w-11 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white"
-          >
-            <X className="h-5 w-5" />
-          </button>
         </div>
 
         {/* Episode Grid */}

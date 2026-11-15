@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Sparkles, Swords, X } from 'lucide-react';
+import { ArrowLeft, ArrowUpCircle, Check, Sparkles, Swords } from 'lucide-react';
 import { BREATHING_STYLES } from '../game/breathing';
 import {
   getCampaignForCharacter,
@@ -16,6 +16,7 @@ interface CharacterSelectModalProps {
   subtitle?: string;
   confirmLabel?: string;
   onClose: () => void;
+  onOpenUpgrades?: () => void;
   onConfirmSelect: (charId: string, breathing: BreathingStyleId) => void;
 }
 
@@ -106,6 +107,7 @@ export function CharacterSelectModal({
   subtitle = 'Select your Demon Slayer protagonist to begin your story route.',
   confirmLabel,
   onClose,
+  onOpenUpgrades,
   onConfirmSelect,
 }: CharacterSelectModalProps) {
   const unlockedHashira = SLAYER_CHARACTERS.filter(
@@ -139,12 +141,22 @@ export function CharacterSelectModal({
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-3 sm:p-6">
       <div className="flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-700/90 bg-slate-900 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 sm:px-6">
-          <div>
-            <h2 className="font-display text-lg font-extrabold tracking-widest text-white sm:text-xl">
-              CHOOSE YOUR SLAYER
-            </h2>
-            <p className="text-xs text-slate-400">{subtitle}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-3.5 py-2.5 sm:px-6 sm:py-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100 hover:border-sky-400 hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4 text-sky-300" />
+              <span>Back</span>
+            </button>
+            <div>
+              <h2 className="font-display text-base font-extrabold tracking-widest text-white sm:text-xl">
+                CHOOSE YOUR SLAYER
+              </h2>
+              <p className="text-xs text-slate-400">{subtitle}</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {unlockedHashira.length > 0 && (
@@ -175,14 +187,6 @@ export function CharacterSelectModal({
                 </button>
               </div>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
-            >
-              <X className="h-5 w-5" />
-            </button>
           </div>
         </div>
 
@@ -257,30 +261,30 @@ export function CharacterSelectModal({
                 </div>
               </div>
 
-              {/* Combat Stats */}
+              {/* Combat Stats (with active upgrades applied) */}
               <div className="mt-4 grid grid-cols-2 gap-3 border-y border-slate-800 py-3 text-xs sm:grid-cols-4">
                 <div>
-                  <span className="text-slate-400">Vitality</span>
+                  <span className="text-slate-400">Max Health</span>
                   <p className="font-mono-num mt-0.5 text-sm font-bold text-emerald-300">
-                    {activeDef.maxHp} HP
+                    {activeDef.maxHp + (activeProfile.upgrades.vitality ?? 0) * 22} HP
                   </p>
                 </div>
                 <div>
                   <span className="text-slate-400">Blade Power</span>
                   <p className="font-mono-num mt-0.5 text-sm font-bold text-rose-300">
-                    {(activeDef.damageMult * 100).toFixed(0)}%
+                    {(activeDef.damageMult * (1 + (activeProfile.upgrades.blade ?? 0) * 0.09) * 100).toFixed(0)}%
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Footwork</span>
+                  <span className="text-slate-400">Defense Ward</span>
                   <p className="font-mono-num mt-0.5 text-sm font-bold text-sky-300">
-                    {(activeDef.speedMult * 100).toFixed(0)}%
+                    {Math.min(58, (activeDef.id === 'genya' ? 12 : 0) + (activeProfile.upgrades.defense ?? 0) * 7)}% Cut
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Swing Speed</span>
+                  <span className="text-slate-400">Breathing Regen</span>
                   <p className="font-mono-num mt-0.5 text-sm font-bold text-amber-300">
-                    {(activeDef.attackSpeedMult * 100).toFixed(0)}%
+                    {(activeDef.energyRegen + (activeProfile.upgrades.breathing ?? 0) * 1.4).toFixed(1)}/s
                   </p>
                 </div>
               </div>
@@ -335,18 +339,28 @@ export function CharacterSelectModal({
               </div>
             </div>
 
-            <div className="mt-5 flex items-center justify-end gap-3">
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2.5">
+              {onOpenUpgrades && (
+                <button
+                  type="button"
+                  onClick={onOpenUpgrades}
+                  className="mr-auto flex min-h-[44px] items-center gap-1.5 rounded-lg border border-amber-500/45 bg-amber-950/25 px-3.5 py-2 text-xs font-bold text-amber-200 hover:border-amber-400 hover:bg-amber-950/45"
+                >
+                  <ArrowUpCircle className="h-4 w-4 text-amber-300" />
+                  <span>Upgrades & Skins</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+                className="min-h-[44px] rounded-lg border border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => onConfirmSelect(activeDef.id, selectedBreathing)}
-                className="flex items-center gap-2 rounded-lg bg-sky-500 px-6 py-2.5 text-sm font-bold text-slate-950 shadow-lg transition-colors hover:bg-sky-400"
+                className="flex min-h-[44px] items-center gap-2 rounded-lg bg-sky-500 px-6 py-2.5 text-sm font-bold text-slate-950 shadow-lg transition-colors hover:bg-sky-400"
               >
                 <Swords className="h-4 w-4" />
                 <span>

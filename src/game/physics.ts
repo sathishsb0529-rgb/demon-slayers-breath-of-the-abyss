@@ -1,5 +1,6 @@
 import { ARENA_LEFT, ARENA_RIGHT, GROUND_Y, RAGDOLL_GRAVITY } from './constants';
 import {
+  ArenaPlatform,
   Fighter,
   JointKey,
   JointPose,
@@ -140,7 +141,8 @@ export function stepRagdoll(
   fighter: Fighter,
   dt: number,
   arenaLeft = ARENA_LEFT,
-  arenaRight = ARENA_RIGHT
+  arenaRight = ARENA_RIGHT,
+  platforms: ArenaPlatform[] = []
 ): RagdollStepResult {
   const r = fighter.ragdoll;
   if (!r.active) {
@@ -196,6 +198,23 @@ export function stepRagdoll(
 
     for (const key of JOINT_KEYS) {
       const n = r.nodes[key];
+      for (const plat of platforms) {
+        if (n.x >= plat.x - n.radius * 0.4 && n.x <= plat.x + plat.w + n.radius * 0.4) {
+          const platLimit = plat.y - n.radius * 0.45;
+          if (n.oldY <= plat.y + 8 && n.y > platLimit) {
+            const vy = n.y - n.oldY;
+            const vx = n.x - n.oldX;
+            if (vy > 3.8 && iter === 0) {
+              impactedGround = true;
+            }
+            n.y = platLimit;
+            n.oldY = n.y + vy * bounce;
+            n.oldX = n.x - vx * groundFriction;
+            r.swordAngularVel *= 0.72;
+          }
+        }
+      }
+
       const floorLimit = GROUND_Y - n.radius * 0.45;
       if (n.y > floorLimit) {
         const vy = n.y - n.oldY;
@@ -229,7 +248,14 @@ export function stepRagdoll(
 
   const pelvis = r.nodes.pelvis;
   fighter.x = Math.max(arenaLeft + 20, Math.min(arenaRight - 20, pelvis.x));
-  fighter.y = GROUND_Y;
+
+  let restSurfaceY = GROUND_Y;
+  for (const plat of platforms) {
+    if (fighter.x >= plat.x && fighter.x <= plat.x + plat.w && pelvis.y <= plat.y + 8) {
+      restSurfaceY = Math.min(restSurfaceY, plat.y);
+    }
+  }
+  fighter.y = restSurfaceY;
   fighter.vx = (pelvis.x - pelvis.oldX) / Math.max(clampedDt, 0.008);
   fighter.vy = (pelvis.y - pelvis.oldY) / Math.max(clampedDt, 0.008);
 
@@ -238,7 +264,7 @@ export function stepRagdoll(
     Math.hypot(pelvis.x - pelvis.oldX, pelvis.y - pelvis.oldY) +
     Math.hypot(chest.x - chest.oldX, chest.y - chest.oldY);
 
-  const nearGround = pelvis.y >= GROUND_Y - 54 && chest.y >= GROUND_Y - 68;
+  const nearGround = pelvis.y >= restSurfaceY - 54 && chest.y >= restSurfaceY - 68;
   if (nearGround && speed < 3.4) {
     r.settledTime += dt;
   } else {

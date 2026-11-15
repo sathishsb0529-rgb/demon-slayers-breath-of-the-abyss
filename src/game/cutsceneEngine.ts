@@ -2,7 +2,7 @@ import { evaluateFighterPose, renderFighter, renderTrainingRock } from './animat
 import { ArenaRenderer, createArenaLayout } from './arena';
 import { SoundEngine } from './audio';
 import { BREATHING_STYLES } from './breathing';
-import { getCharacterById } from './characters';
+import { getCharacterById, getCharacterSkins, getDemonSkins } from './characters';
 import { ARENA_LEFT, ARENA_RIGHT, GROUND_Y, HEAVY_ATTACK_COOLDOWN, WORLD_HEIGHT, WORLD_WIDTH } from './constants';
 import { DEMON_TEMPLATES } from './demons';
 import { ParticleSystem } from './particles';
@@ -17,17 +17,38 @@ import {
   FighterActionState,
 } from './types';
 
-function makeActorFighter(cue: CutsceneActorCue): Fighter {
+function makeActorFighter(
+  cue: CutsceneActorCue,
+  playerSkinId?: string,
+  equippedDemonSkins?: Record<string, string>
+): Fighter {
   if (cue.role === 'demon') {
     const arch = cue.demonArchetype ?? 'basic';
     const tpl = DEMON_TEMPLATES[arch];
+    const demonSkinId = equippedDemonSkins?.[arch];
+    const demonSkin = demonSkinId ? getDemonSkins(arch).find((s) => s.id === demonSkinId) : undefined;
+    const visual = { ...tpl.visual };
+    if (demonSkin) {
+      visual.renderStyle = demonSkin.renderStyle;
+      visual.skinId = demonSkin.id;
+      if (demonSkin.skinColor) visual.skinColor = demonSkin.skinColor;
+      if (demonSkin.uniformColor) visual.uniformColor = demonSkin.uniformColor;
+      if (demonSkin.haoriPrimary) visual.haoriPrimary = demonSkin.haoriPrimary;
+      if (demonSkin.haoriAccent) visual.haoriAccent = demonSkin.haoriAccent;
+      if (demonSkin.eyeColor) visual.eyeColor = demonSkin.eyeColor;
+      if (demonSkin.bladeColor) visual.bladeColor = demonSkin.bladeColor;
+      if (demonSkin.markingColor) {
+        visual.markingColor = demonSkin.markingColor;
+        visual.hornColor = demonSkin.markingColor;
+      }
+    }
     return {
       id: cue.id,
       name: cue.name,
       subtitle: tpl.rankLabel,
       role: 'demon',
       demonArchetype: arch,
-      visual: { ...tpl.visual },
+      visual,
       breathingStyle: 'water',
       damageMult: 1,
       speedMult: 1,
@@ -84,10 +105,25 @@ function makeActorFighter(cue: CutsceneActorCue): Fighter {
       height: 108,
       hitCount: 0,
       damageTaken: 0,
+      awakeningMeter: 0,
+      awakeningActive: false,
+      awakeningTimer: 0,
+      awakeningCooldown: 0,
+      awakeningTier: null,
+      unlockedAwakenings: [],
+      equippedUltimate: 'eternal_sun',
+      ultimateCooldown: 0,
+      redBladeBurnTimer: 0,
+      consecutiveHitsTaken: 0,
+      consecutiveHitTimer: 0,
     };
   }
 
   const charDef = getCharacterById(cue.characterId ?? 'tanjiro');
+  const skin =
+    cue.role === 'slayer' && playerSkinId
+      ? getCharacterSkins(charDef.id).find((s) => s.id === playerSkinId)
+      : undefined;
   return {
     id: cue.id,
     name: cue.name,
@@ -97,15 +133,19 @@ function makeActorFighter(cue: CutsceneActorCue): Fighter {
     visual: {
       skinColor: charDef.skinColor,
       hairColor: charDef.hairColor,
-      uniformColor: charDef.uniformColor,
-      haoriPrimary: charDef.haoriPrimary,
-      haoriAccent: charDef.haoriAccent,
-      scarfColor: charDef.scarfColor,
+      uniformColor: skin?.uniformColor ?? charDef.uniformColor,
+      haoriPrimary: skin?.haoriPrimary ?? charDef.haoriPrimary,
+      haoriAccent: skin?.haoriAccent ?? charDef.haoriAccent,
+      scarfColor: skin?.scarfColor ?? charDef.scarfColor,
       eyeColor: charDef.eyeColor,
-      bladeColor: charDef.bladeColor,
+      bladeColor: skin?.bladeColor ?? charDef.bladeColor,
       weapon: charDef.weapon,
       scale: charDef.id === 'gyomei' ? 1.15 : 1.0,
       bodyBuild: charDef.id === 'gyomei' ? 'hulk' : charDef.id === 'shinobu' || charDef.id === 'kanao' ? 'slim' : 'standard',
+      hasMarkings: skin?.hasMarkings,
+      markingColor: skin?.markingColor,
+      renderStyle: skin?.renderStyle ?? 'anime',
+      skinId: skin?.id ?? 'classic',
     },
     breathingStyle: charDef.defaultBreathing,
     damageMult: 1,
@@ -163,6 +203,17 @@ function makeActorFighter(cue: CutsceneActorCue): Fighter {
     height: 98,
     hitCount: 0,
     damageTaken: 0,
+    awakeningMeter: 0,
+    awakeningActive: false,
+    awakeningTimer: 0,
+    awakeningCooldown: 0,
+    awakeningTier: null,
+    unlockedAwakenings: [],
+    equippedUltimate: 'eternal_sun',
+    ultimateCooldown: 0,
+    redBladeBurnTimer: 0,
+    consecutiveHitsTaken: 0,
+    consecutiveHitTimer: 0,
   };
 }
 
@@ -208,6 +259,12 @@ export class CutsceneEngine {
   private obstacles: ArenaObstacle[] = [];
   private actors = new Map<string, Fighter>();
 
+  private dialogueEnabled = true;
+  private cinematicEffects = true;
+  private cameraEffects = true;
+  private playerSkinId?: string;
+  private equippedDemonSkins?: Record<string, string>;
+
   private beatIndex = 0;
   private beatTimer = 0;
   private beatFxFired = false;
@@ -230,7 +287,17 @@ export class CutsceneEngine {
     cutscene: CutsceneDef,
     sound: SoundEngine,
     subtitlesEnabled: boolean,
-    onComplete: () => void
+    onComplete: () => void,
+    options?: {
+      dialogueEnabled?: boolean;
+      cinematicEffects?: boolean;
+      cameraEffects?: boolean;
+      bloodEffectsEnabled?: boolean;
+      combatVisualEffects?: boolean;
+      performanceMode?: boolean;
+      playerSkinId?: string;
+      equippedDemonSkins?: Record<string, string>;
+    }
   ) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d');
@@ -239,6 +306,16 @@ export class CutsceneEngine {
     this.cutscene = cutscene;
     this.sound = sound;
     this.subtitlesEnabled = subtitlesEnabled;
+    this.dialogueEnabled = options?.dialogueEnabled ?? true;
+    this.cinematicEffects = options?.cinematicEffects ?? true;
+    this.cameraEffects = options?.cameraEffects ?? true;
+    this.playerSkinId = options?.playerSkinId;
+    this.equippedDemonSkins = options?.equippedDemonSkins;
+    this.particles.setVisualSettings({
+      bloodEffectsEnabled: options?.bloodEffectsEnabled ?? false,
+      combatVisualEffects: options?.combatVisualEffects ?? true,
+      performanceMode: options?.performanceMode ?? false,
+    });
     this.onComplete = onComplete;
 
     const layout = createArenaLayout(cutscene.mapId, true);
@@ -260,6 +337,10 @@ export class CutsceneEngine {
 
   public setSubtitlesEnabled(enabled: boolean): void {
     this.subtitlesEnabled = enabled;
+  }
+
+  public setDialogueEnabled(enabled: boolean): void {
+    this.dialogueEnabled = enabled;
   }
 
   public isPaused(): boolean {
@@ -310,7 +391,7 @@ export class CutsceneEngine {
     for (const cue of beat.actors) {
       let fighter = this.actors.get(cue.id);
       if (!fighter) {
-        fighter = makeActorFighter(cue);
+        fighter = makeActorFighter(cue, this.playerSkinId, this.equippedDemonSkins);
         this.actors.set(cue.id, fighter);
       }
       fighter.facing = cue.facing;
@@ -475,9 +556,11 @@ export class CutsceneEngine {
 
     this.arena.renderBackground(ctx, this.cutscene.mapId, this.cameraX, this.viewW, this.viewH);
 
-    const baseScale = Math.max(0.54, Math.min(1.18, this.viewH / WORLD_HEIGHT)) * this.cameraZoom;
-    const shakeX = this.shakeIntensity > 0 ? (Math.random() - 0.5) * 2 * this.shakeIntensity : 0;
-    const shakeY = this.shakeIntensity > 0 ? (Math.random() - 0.5) * 2 * this.shakeIntensity : 0;
+    const zoomFactor = this.cameraEffects ? this.cameraZoom : 1.0;
+    const baseScale = Math.max(0.54, Math.min(1.18, this.viewH / WORLD_HEIGHT)) * zoomFactor;
+    const allowShake = this.cameraEffects && this.shakeIntensity > 0;
+    const shakeX = allowShake ? (Math.random() - 0.5) * 2 * this.shakeIntensity : 0;
+    const shakeY = allowShake ? (Math.random() - 0.5) * 2 * this.shakeIntensity : 0;
 
     ctx.save();
     ctx.translate(this.viewW * 0.5 + shakeX, this.viewH - WORLD_HEIGHT * baseScale * 0.96 + shakeY);
@@ -509,8 +592,8 @@ export class CutsceneEngine {
     this.particles.render(ctx, []);
     this.arena.renderWorldForeground(ctx, this.cutscene.mapId, this.cameraX, WORLD_WIDTH);
 
-    // Speech Bubbles anchored directly over speaking characters
-    if (beat) {
+    // Speech Bubbles anchored directly over speaking characters (respects Dialogue ON/OFF)
+    if (beat && this.dialogueEnabled) {
       for (const cue of beat.actors) {
         if (!cue.bubbleText) continue;
         const f = this.actors.get(cue.id);
@@ -521,8 +604,8 @@ export class CutsceneEngine {
 
     ctx.restore();
 
-    // Mood atmospheric wash
-    if (beat) {
+    // Mood atmospheric wash & Cinematic framing bars
+    if (beat && this.cinematicEffects) {
       const tint =
         beat.lightingMood === 'crimson'
           ? 'rgba(136, 19, 55, 0.16)'
@@ -536,20 +619,23 @@ export class CutsceneEngine {
     }
 
     // Cinematic 2.39:1 top/bottom framing bars
-    const barH = Math.round(this.viewH * 0.08);
-    ctx.fillStyle = '#03050a';
-    ctx.fillRect(0, 0, this.viewW, barH);
-    ctx.fillRect(0, this.viewH - barH, this.viewW, barH);
+    const barH = this.cinematicEffects ? Math.round(this.viewH * 0.08) : 0;
+    if (barH > 0) {
+      ctx.fillStyle = '#03050a';
+      ctx.fillRect(0, 0, this.viewW, barH);
+      ctx.fillRect(0, this.viewH - barH, this.viewW, barH);
+    }
 
-    // Optional subtitle ONLY if toggled on in Settings
-    if (this.subtitlesEnabled && beat?.subtitle) {
+    // Optional subtitle ONLY if toggled on in Settings AND Dialogue is enabled
+    if (this.dialogueEnabled && this.subtitlesEnabled && beat?.subtitle) {
       ctx.font = '600 15px "Inter", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
       const w = Math.min(this.viewW - 80, ctx.measureText(beat.subtitle).width + 36);
-      ctx.fillRect(this.viewW * 0.5 - w * 0.5, this.viewH - barH + 10, w, 28);
+      const subY = this.viewH - Math.max(44, barH) + 10;
+      ctx.fillRect(this.viewW * 0.5 - w * 0.5, subY, w, 28);
       ctx.fillStyle = '#f8fafc';
-      ctx.fillText(beat.subtitle, this.viewW * 0.5, this.viewH - barH + 29);
+      ctx.fillText(beat.subtitle, this.viewW * 0.5, subY + 19);
     }
 
     if (this.fadeAlpha > 0.01) {

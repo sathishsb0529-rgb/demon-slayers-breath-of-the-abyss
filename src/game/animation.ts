@@ -138,6 +138,15 @@ function computeProceduralPose(fighter: Fighter, overrideState?: Fighter['state'
     y: fighter.y - (ly + floatBob) * scale,
   });
 
+  const twoHandGrip = (hand: Vec2, angle: number): Vec2 => ({
+    x: hand.x - Math.cos(angle) * 9 * scale,
+    y: hand.y - Math.sin(angle) * 9 * scale,
+  });
+  const isTwoHandKatana =
+    fighter.visual.weapon === 'katana' ||
+    fighter.visual.weapon === 'whip_katana' ||
+    fighter.visual.weapon === 'flesh_katana';
+
   // Neutral Chudan / Wakigamae-inspired ready stance
   let pelvis = pt(-2, 46);
   let chest = pt(3, 74);
@@ -282,42 +291,111 @@ function computeProceduralPose(fighter: Fighter, overrideState?: Fighter['state'
     scaleX *= rising ? 0.94 : 1.04;
     scaleY *= rising ? 1.06 : 0.96;
   } else if (st === 'BLOCK') {
-    // 9. Defensive Sword Movement (firm vertical/diagonal parry guard)
-    pelvis = pt(-5, 41);
-    chest = pt(-1, 69);
-    head = pt(3, 89);
-    lKnee = pt(-16, 22);
-    lFoot = pt(-23, 2);
-    rKnee = pt(15, 24);
-    rFoot = pt(21, 2);
-    rHandTarget = pt(21, 73);
-    lHandTarget = pt(17, 68);
-    const localS = -1.42;
-    swordAngle = f === 1 ? localS : Math.PI - localS;
-    torsoTilt = -0.06 * f;
+    const cid = fighter.characterId;
+    if (cid === 'giyu') {
+      // Giyu Dead Calm low horizontal water ward
+      pelvis = pt(-6, 39);
+      chest = pt(-1, 66);
+      head = pt(3, 86);
+      lKnee = pt(-18, 20);
+      lFoot = pt(-25, 2);
+      rKnee = pt(17, 22);
+      rFoot = pt(24, 2);
+      rHandTarget = pt(23, 66);
+      lHandTarget = pt(14, 62);
+      const localS = -0.32;
+      swordAngle = f === 1 ? localS : Math.PI - localS;
+      torsoTilt = 0.08 * f;
+    } else if (cid === 'inosuke') {
+      // Inosuke fierce X-cross dual-blade guard
+      pelvis = pt(-4, 38);
+      chest = pt(2, 65);
+      head = pt(6, 85);
+      lKnee = pt(-18, 21);
+      lFoot = pt(-26, 2);
+      rKnee = pt(18, 22);
+      rFoot = pt(26, 2);
+      rHandTarget = pt(20, 74);
+      lHandTarget = pt(14, 72);
+      const localS = -1.15;
+      swordAngle = f === 1 ? localS : Math.PI - localS;
+      offhandAngle = f === 1 ? 0.95 : Math.PI - 0.95;
+      torsoTilt = 0.14 * f;
+    } else if (cid === 'gyomei') {
+      // Gyomei wide armored iron-chain & axe ward
+      pelvis = pt(-6, 40);
+      chest = pt(-2, 70);
+      head = pt(2, 90);
+      rHandTarget = pt(24, 76);
+      lHandTarget = pt(-12, 66);
+      const localS = -1.55;
+      swordAngle = f === 1 ? localS : Math.PI - localS;
+      torsoTilt = -0.04 * f;
+    } else {
+      // Standard firm Nichirin vertical parry guard
+      pelvis = pt(-5, 41);
+      chest = pt(-1, 69);
+      head = pt(3, 89);
+      lKnee = pt(-16, 22);
+      lFoot = pt(-23, 2);
+      rKnee = pt(15, 24);
+      rFoot = pt(21, 2);
+      rHandTarget = pt(21, 73);
+      lHandTarget = pt(17, 68);
+      const localS = -1.42;
+      swordAngle = f === 1 ? localS : Math.PI - localS;
+      torsoTilt = -0.06 * f;
+    }
   } else if (st === 'DODGE') {
-    pelvis = pt(7, 38);
-    chest = pt(15, 62);
-    head = pt(19, 80);
-    lKnee = pt(-14, 22);
-    lFoot = pt(-26, 4);
-    rKnee = pt(16, 25);
-    rFoot = pt(22, 4);
-    lHandTarget = pt(-16, 50);
-    rHandTarget = pt(-4, 48);
-    torsoTilt = 0.48 * f;
-    swordAngle = f === 1 ? 2.75 : Math.PI - 2.75;
-    scaleX *= 1.12;
-    scaleY *= 0.9;
+    const cid = fighter.characterId;
+    if (cid === 'zenitsu') {
+      // Lightning flash ultra-low horizontal dart
+      pelvis = pt(12, 34);
+      chest = pt(22, 56);
+      head = pt(27, 73);
+      lFoot = pt(-30, 5);
+      rFoot = pt(26, 4);
+      lHandTarget = pt(-12, 46);
+      rHandTarget = pt(10, 48);
+      torsoTilt = 0.56 * f;
+      swordAngle = f === 1 ? 2.86 : Math.PI - 2.86;
+      scaleX *= 1.18;
+      scaleY *= 0.85;
+    } else if (cid === 'muichiro') {
+      // Weightless mist glide
+      pelvis = pt(6, 43);
+      chest = pt(12, 69);
+      head = pt(15, 88);
+      lHandTarget = pt(-18, 56);
+      rHandTarget = pt(-8, 52);
+      torsoTilt = 0.28 * f;
+      swordAngle = f === 1 ? 2.4 : Math.PI - 2.4;
+      scaleX *= 1.06;
+    } else {
+      pelvis = pt(7, 38);
+      chest = pt(15, 62);
+      head = pt(19, 80);
+      lKnee = pt(-14, 22);
+      lFoot = pt(-26, 4);
+      rKnee = pt(16, 25);
+      rFoot = pt(22, 4);
+      lHandTarget = pt(-16, 50);
+      rHandTarget = pt(-4, 48);
+      torsoTilt = 0.48 * f;
+      swordAngle = f === 1 ? 2.75 : Math.PI - 2.75;
+      scaleX *= 1.12;
+      scaleY *= 0.9;
+    }
   } else if (st === 'HURT') {
+    const grit = fighter.characterId === 'sanemi' || fighter.characterId === 'tanjiro' || fighter.characterId === 'gyomei';
     pelvis = pt(-4, 43);
-    chest = pt(-10, 70);
-    head = pt(-14, 90);
-    lHandTarget = pt(-22, 54);
-    rHandTarget = pt(10, 48);
-    torsoTilt = -0.32 * f;
-    headTilt = -0.38 * f;
-    swordAngle = f === 1 ? 0.8 : Math.PI - 0.8;
+    chest = pt(grit ? -7 : -11, 70);
+    head = pt(grit ? -10 : -15, 90);
+    lHandTarget = pt(-20, 54);
+    rHandTarget = pt(12, 50);
+    torsoTilt = (grit ? -0.22 : -0.34) * f;
+    headTilt = (grit ? -0.25 : -0.4) * f;
+    swordAngle = f === 1 ? 0.72 : Math.PI - 0.72;
   } else if (st === 'ATTACK_WINDUP' || st === 'BDA_CAST') {
     const spec = fighter.currentAttack;
     const dur = spec ? spec.startup : 0.35;
@@ -378,27 +456,27 @@ function computeProceduralPose(fighter: Fighter, overrideState?: Fighter['state'
         if (pattern === 'spin_wheel') {
           const rot = swing * Math.PI * 2;
           rHandTarget = pt(14 + Math.cos(rot) * 22, 68 + Math.sin(rot) * 18);
-          lHandTarget = pt(-10, 58);
           swordAngle = f === 1 ? rot - 0.5 : Math.PI - (rot - 0.5);
+          lHandTarget = isTwoHandKatana ? twoHandGrip(rHandTarget, swordAngle) : pt(-10, 58);
         } else if (pattern === 'upward_crescent') {
           rHandTarget = pt(34, lerp(42, 96, swing));
-          lHandTarget = pt(-12, 58);
           const localA = lerp(1.35, -1.85, swing);
           swordAngle = f === 1 ? localA : Math.PI - localA;
+          lHandTarget = isTwoHandKatana ? twoHandGrip(rHandTarget, swordAngle) : pt(-12, 58);
         } else if (pattern === 'overhead_crush') {
           rHandTarget = pt(34, lerp(100, 42, swing));
-          lHandTarget = pt(28, lerp(96, 40, swing));
           const localA = lerp(-2.45, 0.85, swing);
           swordAngle = f === 1 ? localA : Math.PI - localA;
+          lHandTarget = isTwoHandKatana ? twoHandGrip(rHandTarget, swordAngle) : pt(28, lerp(96, 40, swing));
         } else if (pattern === 'pierce_thrust') {
           rHandTarget = pt(lerp(-8, 46, swing), 66);
-          lHandTarget = pt(-14, 56);
           swordAngle = f === 1 ? 0.02 : Math.PI - 0.02;
+          lHandTarget = isTwoHandKatana ? twoHandGrip(rHandTarget, swordAngle) : pt(-14, 56);
         } else {
           rHandTarget = pt(lerp(8, 38, swing), lerp(82, 56, swing));
-          lHandTarget = pt(-14, 56);
           const localA = lerp(-2.15, 0.35, swing);
           swordAngle = f === 1 ? localA : Math.PI - localA;
+          lHandTarget = isTwoHandKatana ? twoHandGrip(rHandTarget, swordAngle) : pt(-14, 56);
         }
         scaleX *= 1.06;
         scaleY *= 0.94;
@@ -444,10 +522,10 @@ function computeProceduralPose(fighter: Fighter, overrideState?: Fighter['state'
           lFoot = pt(-24, 2);
           rFoot = pt(12, 2);
           rHandTarget = pt(lerp(18, -10, startFrac), lerp(66, 102, startFrac));
-          lHandTarget = pt(lerp(-6, -13, startFrac), lerp(56, 98, startFrac));
           torsoTilt = -0.26 * startFrac * f;
           const localA = lerp(-0.55, -2.58, startFrac);
           swordAngle = f === 1 ? localA : Math.PI - localA;
+          lHandTarget = isTwoHandKatana ? twoHandGrip(rHandTarget, swordAngle) : pt(lerp(-6, -13, startFrac), lerp(56, 98, startFrac));
         } else {
           const s = swingFrac;
           const lunge = lerp(-8, 12, s);
@@ -459,10 +537,10 @@ function computeProceduralPose(fighter: Fighter, overrideState?: Fighter['state'
           rKnee = pt(22, 25);
           rFoot = pt(30, 2);
           rHandTarget = pt(lerp(-8, 36, s), lerp(102, 46, s) + recFrac * 10);
-          lHandTarget = pt(lerp(-11, 30, s), lerp(98, 43, s) + recFrac * 10);
           torsoTilt = lerp(-0.22, 0.42, s) * f;
           const localA = lerp(-2.58, 0.92, s) - recFrac * 0.25;
           swordAngle = f === 1 ? localA : Math.PI - localA;
+          lHandTarget = isTwoHandKatana ? twoHandGrip(rHandTarget, swordAngle) : pt(lerp(-11, 30, s), lerp(98, 43, s) + recFrac * 10);
         }
       } else if (tech === 'horizontal_slash') {
         // 1. Horizontal Sword Slash (hip coiling back -> snap waist forward -> sweeping wrist slice)
@@ -497,10 +575,10 @@ function computeProceduralPose(fighter: Fighter, overrideState?: Fighter['state'
           chest = pt(-2 * startFrac, 74);
           head = pt(4, 94);
           rHandTarget = pt(lerp(18, 4, startFrac), lerp(65, 100, startFrac));
-          lHandTarget = pt(lerp(-6, -2, startFrac), lerp(56, 88, startFrac));
           torsoTilt = -0.12 * startFrac * f;
           const localA = lerp(-0.52, -2.15, startFrac);
           swordAngle = f === 1 ? localA : Math.PI - localA;
+          lHandTarget = isTwoHandKatana ? twoHandGrip(rHandTarget, swordAngle) : pt(lerp(-6, -2, startFrac), lerp(56, 88, startFrac));
         } else {
           const s = swingFrac;
           pelvis = pt(lerp(-3, 7, s), lerp(45, 40, s));
@@ -511,10 +589,10 @@ function computeProceduralPose(fighter: Fighter, overrideState?: Fighter['state'
           rKnee = pt(21, 25);
           rFoot = pt(29, 2);
           rHandTarget = pt(lerp(4, 34, s), lerp(100, 44, s) + recFrac * 8);
-          lHandTarget = pt(lerp(-2, -12, s), 55);
           torsoTilt = lerp(-0.12, 0.34, s) * f;
           const localA = lerp(-2.15, 0.82, s) - recFrac * 0.2;
           swordAngle = f === 1 ? localA : Math.PI - localA;
+          lHandTarget = isTwoHandKatana ? twoHandGrip(rHandTarget, swordAngle) : pt(lerp(-2, -12, s), 55);
         }
       } else if (tech === 'diagonal_upward') {
         // 3. Diagonal Upward Slash (low knee bend -> rising hip/shoulder lift)
@@ -706,7 +784,12 @@ function drawLimb(
   ctx.stroke();
 }
 
-export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, pose: JointPose): void {
+export function renderFighter(
+  ctx: CanvasRenderingContext2D,
+  fighter: Fighter,
+  pose: JointPose,
+  options?: { showWeakPointReticle?: boolean }
+): void {
   const v = fighter.visual;
   const isPlayerOrAlly = fighter.role === 'player' || fighter.role === 'ally';
   const f = fighter.facing;
@@ -873,8 +956,43 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
     ctx.restore();
   }
 
-  const outline = '#050811';
+  const outline = v.renderStyle === 'stick_nodes' ? '#020617' : '#050811';
   const styleDef = BREATHING_STYLES[fighter.breathingStyle];
+
+  // Demon Slayer Awakening Aura (Mark, Transparent World, Bright Red Blade, Selfless State, Transcendent)
+  if (fighter.awakeningActive) {
+    const tier = fighter.awakeningTier ?? 'mark';
+    const auraColor =
+      tier === 'red_blade'
+        ? 'rgba(220, 38, 38, 0.42)'
+        : tier === 'transparent_world'
+          ? 'rgba(56, 189, 248, 0.4)'
+          : tier === 'selfless_state'
+            ? 'rgba(165, 243, 252, 0.42)'
+            : tier === 'transcendent'
+              ? 'rgba(251, 191, 36, 0.48)'
+              : 'rgba(239, 68, 68, 0.36)';
+    ctx.save();
+    ctx.strokeStyle = auraColor;
+    ctx.lineWidth = tier === 'transcendent' ? 4 : 2.8;
+    const pulseR = (38 + Math.sin(fighter.animTime * 9) * 4) * v.scale;
+    ctx.beginPath();
+    ctx.arc(pose.chest.x, pose.chest.y, pulseR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Stick Nodes crisp outer ink glow silhouette mode (cosmetic skin)
+  if (v.renderStyle === 'stick_nodes') {
+    ctx.save();
+    ctx.strokeStyle = v.haoriAccent || '#38bdf8';
+    ctx.globalAlpha = 0.28;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(pose.chest.x, pose.chest.y - 6, 30 * v.scale, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // Back leg
   drawLimb(ctx, pose.pelvis, pose.lKnee, 8 * v.scale * widthMult, 6.5 * v.scale, v.uniformColor, outline);
@@ -899,11 +1017,15 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
       styleDef.bladeEdgeColor,
       styleDef.tsubaColor,
       false,
-      v.scale
+      v.scale,
+      fighter.animTime
     );
   } else if (v.weapon === 'shotgun_katana') {
     // Genya holds Nichirin sawed-off double-barrel shotgun in offhand!
     renderOffhandShotgun(ctx, pose.lHand, f, v.scale);
+  } else if (v.weapon === 'stone_flail') {
+    // Gyomei's offhand Nichirin Hand Axe linked by iron chain
+    renderOffhandAxe(ctx, pose.lHand, pose.rHand, pose.offhandAngle, v.scale);
   }
 
   // Front leg
@@ -930,7 +1052,8 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
   ctx.stroke();
 
   if (isPlayerOrAlly) {
-    // Haori split coat tail
+    // Haori split coat tail with clipped pattern motif
+    ctx.save();
     ctx.beginPath();
     ctx.moveTo(pose.chest.x - perpX * 9, pose.chest.y - perpY * 9);
     ctx.lineTo(pose.pelvis.x - perpX * 16 - f * 8, pose.pelvis.y - perpY * 16 + 10);
@@ -938,7 +1061,65 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
     ctx.closePath();
     ctx.fillStyle = v.haoriPrimary;
     ctx.fill();
+
+    if (v.haoriPattern) {
+      ctx.save();
+      ctx.clip();
+      const minX = Math.min(pose.chest.x, pose.pelvis.x) - 24;
+      const minY = Math.min(pose.chest.y, pose.pelvis.y) - 10;
+      if (v.haoriPattern === 'checkered') {
+        ctx.fillStyle = v.haoriAccent;
+        for (let gx = 0; gx < 6; gx++) {
+          for (let gy = 0; gy < 6; gy++) {
+            if ((gx + gy) % 2 === 0) {
+              ctx.fillRect(minX + gx * 8, minY + gy * 8, 8, 8);
+            }
+          }
+        }
+      } else if (v.haoriPattern === 'triangles') {
+        ctx.fillStyle = v.haoriAccent;
+        for (let tx = 0; tx < 5; tx++) {
+          for (let ty = 0; ty < 4; ty++) {
+            const bx = minX + tx * 10;
+            const by = minY + ty * 10;
+            ctx.beginPath();
+            ctx.moveTo(bx + 4, by);
+            ctx.lineTo(bx + 8, by + 7);
+            ctx.lineTo(bx, by + 7);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+      } else if (v.haoriPattern === 'half_half') {
+        ctx.fillStyle = v.haoriAccent;
+        ctx.fillRect(pose.chest.x - 2, minY, 26, 56);
+      } else if (v.haoriPattern === 'flame') {
+        ctx.fillStyle = v.haoriAccent;
+        for (let k = 0; k < 5; k++) {
+          ctx.beginPath();
+          ctx.moveTo(minX + k * 9, pose.pelvis.y + 12);
+          ctx.lineTo(minX + k * 9 + 4.5, pose.pelvis.y - 2);
+          ctx.lineTo(minX + k * 9 + 9, pose.pelvis.y + 12);
+          ctx.fill();
+        }
+      } else if (v.haoriPattern === 'stripes') {
+        ctx.fillStyle = v.haoriAccent;
+        for (let sx = 0; sx < 6; sx++) {
+          ctx.fillRect(minX + sx * 8, minY, 3.5, 56);
+        }
+      } else if (v.haoriPattern === 'butterfly' || v.haoriPattern === 'mist_clouds') {
+        ctx.fillStyle = v.haoriAccent;
+        ctx.globalAlpha = 0.65;
+        ctx.beginPath();
+        ctx.arc(pose.pelvis.x - f * 6, pose.pelvis.y + 2, 7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = 1.6;
     ctx.stroke();
+    ctx.restore();
 
     // Scabbard (Saya) resting cleanly on the slayer's waist hip
     if (
@@ -1118,6 +1299,25 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
     ctx.stroke();
   }
 
+  if (isPlayerOrAlly && (v.hasMarkings || fighter.awakeningActive)) {
+    // Awakened Demon Slayer Marking crest across forehead & temple
+    ctx.save();
+    ctx.strokeStyle =
+      fighter.awakeningActive && fighter.awakeningTier === 'transparent_world'
+        ? '#38bdf8'
+        : fighter.awakeningActive && fighter.awakeningTier === 'transcendent'
+          ? '#fbbf24'
+          : v.markingColor ?? '#ef4444';
+    ctx.lineWidth = fighter.awakeningActive ? 2.4 : 1.9;
+    ctx.beginPath();
+    ctx.moveTo(f * 1.5 * v.scale, -8.5 * v.scale);
+    ctx.lineTo(f * 5.2 * v.scale, -6.2 * v.scale);
+    ctx.lineTo(f * 3.5 * v.scale, -4.4 * v.scale);
+    ctx.lineTo(f * 7.2 * v.scale, -3.2 * v.scale);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   if (fighter.demonArchetype === 'boss_rui') {
     ctx.fillStyle = '#e11d48';
     ctx.beginPath();
@@ -1247,19 +1447,63 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
 
   // Weapon anchored directly at pose.rHand BEFORE drawing gripping knuckles!
   const isBreathing = fighter.state === 'BREATHING_FORM';
-  const baseBlade = isPlayerOrAlly ? styleDef.bladeBaseColor : v.bladeColor;
-  const edgeBlade = isPlayerOrAlly ? styleDef.bladeEdgeColor : '#f8fafc';
+  const hasRedBlade =
+    fighter.awakeningActive &&
+    (fighter.awakeningTier === 'red_blade' || fighter.awakeningTier === 'transcendent');
+  const baseBlade = hasRedBlade
+    ? '#dc2626'
+    : isPlayerOrAlly
+      ? styleDef.bladeBaseColor
+      : v.bladeColor;
+  const edgeBlade = hasRedBlade
+    ? '#fef08a'
+    : isPlayerOrAlly
+      ? styleDef.bladeEdgeColor
+      : '#f8fafc';
   const tsubaCol = isPlayerOrAlly ? styleDef.tsubaColor : '#eab308';
+
+  // Reference-video crisp anime sword smear wedge during active slashes
+  if (
+    fighter.currentAttack &&
+    (fighter.state === 'LIGHT_ATTACK' ||
+      fighter.state === 'HEAVY_ATTACK' ||
+      fighter.state === 'JUMP_ATTACK' ||
+      fighter.state === 'RUNNING_ATTACK' ||
+      fighter.state === 'COUNTER_ATTACK' ||
+      fighter.state === 'BREATHING_FORM') &&
+    fighter.stateTimer >= fighter.currentAttack.startup * 0.7 &&
+    fighter.stateTimer <= fighter.currentAttack.startup + fighter.currentAttack.active + 0.04
+  ) {
+    ctx.save();
+    ctx.translate(pose.rHand.x, pose.rHand.y);
+    ctx.rotate(pose.swordAngle);
+    const smearLen = 78 * v.scale;
+    const trailDir = -f * 0.62;
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(smearLen, 0);
+    ctx.arc(0, 0, smearLen, 0, trailDir, trailDir < 0);
+    ctx.closePath();
+    ctx.fillStyle = hasRedBlade
+      ? 'rgba(239, 68, 68, 0.36)'
+      : isBreathing
+        ? `${styleDef.primaryColor}55`
+        : 'rgba(226, 232, 240, 0.28)';
+    ctx.fill();
+    ctx.restore();
+  }
+
   renderWeapon(
     ctx,
     pose.rHand,
     pose.swordAngle,
     v.weapon,
-    isBreathing ? styleDef.primaryColor : baseBlade,
+    isBreathing && !hasRedBlade ? styleDef.primaryColor : baseBlade,
     edgeBlade,
     tsubaCol,
-    isBreathing,
-    v.scale
+    isBreathing || hasRedBlade,
+    v.scale,
+    fighter.animTime
   );
 
   // Front Forearm + Gripping Fist drawn over hilt
@@ -1336,6 +1580,88 @@ export function renderFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, p
     ctx.restore();
   }
 
+  // Red Blade burn visual if applied to demon
+  if (fighter.redBladeBurnTimer > 0) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.72)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(pose.chest.x, pose.chest.y, 29 * v.scale, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Transparent World Weak-Point Target Reticle on Demon
+  if (options?.showWeakPointReticle && fighter.hp > 0) {
+    ctx.save();
+    const pulse = 1 + Math.sin(fighter.animTime * 14) * 0.14;
+    const rx = pose.chest.x;
+    const ry = pose.chest.y - 4 * v.scale;
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(rx, ry, 14 * pulse * v.scale, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(rx - 18 * v.scale, ry);
+    ctx.lineTo(rx + 18 * v.scale, ry);
+    ctx.moveTo(rx, ry - 18 * v.scale);
+    ctx.lineTo(rx, ry + 18 * v.scale);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.55)';
+    ctx.beginPath();
+    ctx.arc(rx, ry, 4.2 * v.scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function renderOffhandAxe(
+  ctx: CanvasRenderingContext2D,
+  axeHand: Vec2,
+  flailHand: Vec2,
+  angle: number,
+  scale: number
+): void {
+  // Subtle linking chain between offhand axe handle and primary flail chain grip
+  ctx.save();
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(flailHand.x, flailHand.y);
+  ctx.quadraticCurveTo((flailHand.x + axeHand.x) * 0.5, Math.max(flailHand.y, axeHand.y) + 16, axeHand.x, axeHand.y);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(axeHand.x, axeHand.y);
+  ctx.rotate(angle);
+  ctx.scale(scale, scale);
+  // Haft
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(-10, -2, 34, 4);
+  // Broad crescent Nichirin Axe head
+  ctx.fillStyle = '#475569';
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(14, -2);
+  ctx.quadraticCurveTo(22, -16, 30, -13);
+  ctx.lineTo(31, 13);
+  ctx.quadraticCurveTo(22, 16, 14, 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // Razor edge bevel
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(29, -12);
+  ctx.lineTo(30, 12);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -1367,7 +1693,8 @@ function renderWeapon(
   bladeEdgeColor: string,
   tsubaColor: string,
   glow: boolean,
-  scale: number
+  scale: number,
+  animTime = 0
 ): void {
   if (weapon === 'unarmed_claws' || weapon === 'muzan_tentacles') {
     ctx.save();
@@ -1477,17 +1804,40 @@ function renderWeapon(
   ctx.fillRect(5.8, -2.6, 4.2, 5.2);
 
   if (weapon === 'stone_flail') {
+    // Gyomei's Multi-Link Iron Chain + Heavy Spiked Cast-Iron Flail
+    const chainLen = 70;
+    const waveOffset = Math.sin(animTime * 9) * 3;
     ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.1;
+    for (let cx = 12; cx < chainLen; cx += 9) {
+      const cy = Math.sin((cx / chainLen) * Math.PI) * waveOffset;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 5, 2.8, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    const ballX = chainLen + 8;
+    const ballY = waveOffset * 0.5;
+    // 8 Iron Spikes
+    ctx.fillStyle = '#94a3b8';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.1;
+    for (let s = 0; s < 8; s++) {
+      const sa = (s / 8) * Math.PI * 2 + animTime * 2.5;
+      ctx.beginPath();
+      ctx.moveTo(ballX + Math.cos(sa - 0.16) * 10, ballY + Math.sin(sa - 0.16) * 10);
+      ctx.lineTo(ballX + Math.cos(sa) * 18, ballY + Math.sin(sa) * 18);
+      ctx.lineTo(ballX + Math.cos(sa + 0.16) * 10, ballY + Math.sin(sa + 0.16) * 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    // Iron Sphere Core
+    ctx.fillStyle = glow ? bladeBaseColor : '#44403c';
     ctx.beginPath();
-    ctx.moveTo(10, 0);
-    ctx.lineTo(68, 0);
-    ctx.stroke();
-    ctx.fillStyle = '#57534e';
-    ctx.beginPath();
-    ctx.arc(72, 0, 12, 0, Math.PI * 2);
+    ctx.arc(ballX, ballY, 12.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.8;
     ctx.stroke();
   } else if (weapon === 'whip_katana') {
     ctx.beginPath();

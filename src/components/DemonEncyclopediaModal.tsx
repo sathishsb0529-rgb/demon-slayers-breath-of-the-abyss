@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Search, Skull, Swords, X } from 'lucide-react';
+import { ArrowLeft, Search, Skull, Swords } from 'lucide-react';
 import { DemonTemplate, ENCYCLOPEDIA_DEMONS } from '../game/demons';
 import { DemonArchetype, DemonDifficultyTier, MapId } from '../game/types';
 
@@ -209,26 +209,28 @@ export function DemonEncyclopediaModal({
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-3 sm:p-6">
       <div className="flex max-h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-rose-900/60 bg-slate-900 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <Skull className="h-5 w-5 text-rose-400" />
-            <div>
-              <h2 className="font-display text-lg font-bold text-white sm:text-xl">
-                Demon Encyclopedia ({ENCYCLOPEDIA_DEMONS.length} Canonical Demons)
-              </h2>
-              <p className="text-xs text-slate-400">
-                Inspect all 60 demons, Blood Demon Arts, multi-phase AI traits, and challenge any opponent.
-              </p>
+        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3.5 py-2.5 sm:px-6 sm:py-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100 hover:border-sky-400 hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4 text-rose-300" />
+              <span>Back</span>
+            </button>
+            <div className="flex items-center gap-2">
+              <Skull className="hidden h-5 w-5 text-rose-400 sm:block" />
+              <div>
+                <h2 className="font-display text-base font-bold text-white sm:text-xl">
+                  Demon Encyclopedia ({ENCYCLOPEDIA_DEMONS.length} Canonical Demons)
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Inspect all 60 demons, Blood Demon Arts, multi-phase AI traits, and challenge any opponent.
+                </p>
+              </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-11 w-11 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white"
-          >
-            <X className="h-5 w-5" />
-          </button>
         </div>
 
         {/* Filter & Search Bar */}

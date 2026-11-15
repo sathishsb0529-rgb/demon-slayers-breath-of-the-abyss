@@ -6,45 +6,85 @@
 import { useEffect, useRef, useState } from 'react';
 import { CampaignModal } from './components/CampaignModal';
 import { CharacterSelectModal } from './components/CharacterSelectModal';
+import { CharacterUpgradeModal } from './components/CharacterUpgradeModal';
+import { ControlCustomizerModal } from './components/ControlCustomizerModal';
 import { CutsceneOverlay } from './components/CutsceneOverlay';
 import { DemonEncyclopediaModal } from './components/DemonEncyclopediaModal';
+import { DemonSkinsModal } from './components/DemonSkinsModal';
 import { GameHud } from './components/GameHud';
 import { GameOverlays } from './components/GameOverlays';
 import { MobileControls } from './components/MobileControls';
 import { RosterShopModal } from './components/RosterShopModal';
 import { SettingsModal } from './components/SettingsModal';
+import { StoryGalleryModal } from './components/StoryGalleryModal';
 import { SoundEngine } from './game/audio';
+import { AWAKENING_SPECS, ULTIMATE_SPECS } from './game/breathing';
 import {
   buildCutsceneForPlayer,
   CUTSCENES,
   getCampaignForCharacter,
   getCharacterCampaignInfo,
 } from './game/campaign';
+import { getCharacterSkins, getDemonSkins } from './game/characters';
 import { HEAVY_ATTACK_COOLDOWN } from './game/constants';
 import { GameEngine } from './game/engine';
 import {
+  awardExplorationCoins,
+  equipUltimate,
   getCharacterProfile,
   loadSaveData,
   markCutsceneSeen,
+  purchaseAwakeningTier,
   purchaseCharacter,
+  purchaseCharacterSkin,
+  purchaseDemonSkin,
+  purchaseUltimate,
   recordLevelVictory,
+  recordSurvivalProgress,
   recordTutorialCompleted,
   selectCharacterAndBreathing,
   selectCharacterSkin,
+  selectDemonSkin,
   updateAudioSettings,
+  updateControlsLayout,
+  updateGameplaySettings,
   upgradeCharacterStat,
   writeSaveData,
 } from './game/save';
 import {
   AudioSettings,
+  AwakeningTierId,
   BreathingStyleId,
   CharacterUpgrades,
   CutsceneDef,
   DemonArchetype,
+  GameplaySettings,
   HudSnapshot,
   MapId,
   SaveData,
+  TouchControlsLayout,
+  UltimateId,
 } from './game/types';
+
+declare global {
+  interface Window {
+    AndroidNavigation?: {
+      exitGame?: () => void;
+      ensureFullscreen?: () => void;
+    };
+  }
+}
+
+type ModalScreen =
+  | 'charSelect'
+  | 'upgrades'
+  | 'campaign'
+  | 'shop'
+  | 'demonSkins'
+  | 'storyGallery'
+  | 'encyclopedia'
+  | 'settings'
+  | 'controls';
 
 const INITIAL_HUD: HudSnapshot = {
   phase: 'TITLE_MENU',
@@ -59,11 +99,20 @@ const INITIAL_HUD: HudSnapshot = {
   playerMaxEnergy: 100,
   breathingStyle: 'water',
   breathingStyleName: 'Water Breathing',
+  totalFormsForStyle: 11,
   heavyCooldown: 0,
   maxHeavyCooldown: HEAVY_ATTACK_COOLDOWN,
-  formCooldowns: [0, 0, 0, 0, 0],
+  formCooldowns: new Array(11).fill(0),
   counterReady: false,
   actionWarning: null,
+  awakeningMeter: 0,
+  awakeningActive: false,
+  awakeningTimer: 0,
+  awakeningTier: null,
+  awakeningCooldown: 0,
+  equippedUltimate: 'eternal_sun',
+  ultimateCooldown: 0,
+  maxUltimateCooldown: 12,
   enemyName: 'Feral Night Demon',
   enemySubtitle: 'Lesser Demon',
   enemyHp: 135,
@@ -84,6 +133,11 @@ const INITIAL_HUD: HudSnapshot = {
   advancePrompt: null,
   playerWorldX: 680,
   worldWidth: 9600,
+  survivalWave: 1,
+  survivalMaxWaves: 20,
+  survivalEnemiesLeft: 1,
+  survivalCountdown: 0,
+  survivalCoinsEarned: 0,
   tutorialStep: 1,
   tutorialTitle: 'Arrival at Mt. Sagiri',
   tutorialInstruction: 'Move forward or tap Slash/Continue to begin your trial.',
@@ -113,19 +167,47 @@ export default function App() {
 
   const [hud, setHud] = useState<HudSnapshot>({ ...INITIAL_HUD, coins: save.coins });
   const [engineReady, setEngineReady] = useState(false);
-  const [showCampaign, setShowCampaign] = useState(false);
-  const [showCharSelect, setShowCharSelect] = useState(false);
+
+  const [modalStack, setModalStack] = useState<ModalScreen[]>([]);
   const [pendingAfterCharSelect, setPendingAfterCharSelect] = useState<
     ((charId: string, breathing: BreathingStyleId) => void) | null
   >(null);
-  const [showShop, setShowShop] = useState(false);
-  const [showEncyclopedia, setShowEncyclopedia] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [activeCutscene, setActiveCutscene] = useState<ActiveCutsceneState | null>(null);
+  const [exitPromptOpen, setExitPromptOpen] = useState(false);
+
+  const activeModal = modalStack[modalStack.length - 1] ?? null;
+
   const fallbackSoundRef = useRef<SoundEngine | null>(null);
   if (!fallbackSoundRef.current) {
     fallbackSoundRef.current = new SoundEngine();
   }
+
+  const pushModal = (screen: ModalScreen) => {
+    setExitPromptOpen(false);
+    setModalStack((prev) => {
+      if (prev[prev.length - 1] === screen) return prev;
+      return [...prev, screen];
+    });
+  };
+
+  const popModal = () => {
+    setModalStack((prev) => {
+      if (prev.length === 0) return prev;
+      const closing = prev[prev.length - 1];
+      if (closing === 'charSelect') {
+        setPendingAfterCharSelect(null);
+        if (engineRef.current?.phase === 'TITLE_MENU') {
+          engineRef.current.setMenuMusicTheme('menu', saveRef.current.selectedCharacterId);
+        }
+      }
+      return prev.slice(0, -1);
+    });
+  };
+
+  const clearModals = () => {
+    setModalStack([]);
+    setPendingAfterCharSelect(null);
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -137,6 +219,16 @@ export default function App() {
       },
       onTutorialComplete: () => {
         const updated = recordTutorialCompleted(saveRef.current, 80);
+        setSave(updated);
+        engine.setCoinsBalance(updated.coins);
+      },
+      onExploreCachePickup: (_cacheId, coins) => {
+        const updated = awardExplorationCoins(saveRef.current, coins);
+        setSave(updated);
+        engine.setCoinsBalance(updated.coins);
+      },
+      onSurvivalComplete: (wave, won, coinsEarned, demonsDefeated) => {
+        const updated = recordSurvivalProgress(saveRef.current, wave, won, coinsEarned, demonsDefeated);
         setSave(updated);
         engine.setCoinsBalance(updated.coins);
       },
@@ -188,12 +280,17 @@ export default function App() {
       },
     });
     engine.setCoinsBalance(saveRef.current.coins);
+    engine.setEquippedDemonSkins(saveRef.current.equippedDemonSkins);
     engine.applyAudioSettings(saveRef.current.audio);
+    engine.applyGameplaySettings(saveRef.current.gameplay);
     engineRef.current = engine;
     setEngineReady(true);
     engine.startLoop();
 
-    const handleResize = () => engine.resize();
+    const handleResize = () => {
+      engine.resize();
+      window.AndroidNavigation?.ensureFullscreen?.();
+    };
     const handleBlur = () => engine.clearHeldInputs();
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -201,6 +298,13 @@ export default function App() {
       const code = e.code;
 
       if (code === 'Escape' || code === 'KeyP') {
+        if (navRef.current.modalStack.length > 0 || navRef.current.activeCutscene || navRef.current.exitPromptOpen) {
+          if (code === 'Escape') {
+            e.preventDefault();
+            navRef.current.handleBack();
+          }
+          return;
+        }
         if (engine.phase === 'PLAYING' || engine.phase === 'PAUSED') {
           e.preventDefault();
           engine.togglePause();
@@ -208,7 +312,7 @@ export default function App() {
         return;
       }
 
-      if (engine.phase !== 'PLAYING') return;
+      if (engine.phase !== 'PLAYING' || navRef.current.modalStack.length > 0) return;
 
       if (code === 'KeyA' || code === 'ArrowLeft') {
         engine.setHeldInput('left', true);
@@ -225,6 +329,10 @@ export default function App() {
         engine.triggerAction('heavy');
       } else if (code === 'ShiftLeft' || code === 'ShiftRight') {
         engine.triggerAction('dodge');
+      } else if (code === 'KeyQ') {
+        engine.triggerAwakening();
+      } else if (code === 'KeyU') {
+        engine.triggerUltimate();
       } else if (code === 'Digit1' || code === 'KeyE') {
         engine.triggerBreathingForm(1);
       } else if (code === 'Digit2') {
@@ -235,6 +343,16 @@ export default function App() {
         engine.triggerBreathingForm(4);
       } else if (code === 'Digit5') {
         engine.triggerBreathingForm(5);
+      } else if (code === 'Digit6') {
+        engine.triggerBreathingForm(6);
+      } else if (code === 'Digit7') {
+        engine.triggerBreathingForm(7);
+      } else if (code === 'Digit8') {
+        engine.triggerBreathingForm(8);
+      } else if (code === 'Digit9') {
+        engine.triggerBreathingForm(9);
+      } else if (code === 'Digit0') {
+        engine.triggerBreathingForm(10);
       }
     };
 
@@ -264,54 +382,102 @@ export default function App() {
     };
   }, []);
 
-  const closeAllModals = () => {
-    setShowCampaign(false);
-    setShowCharSelect(false);
-    setShowShop(false);
-    setShowEncyclopedia(false);
-    setShowSettings(false);
+  const handleBackNavigation = () => {
+    if (exitPromptOpen) {
+      setExitPromptOpen(false);
+      return;
+    }
+    if (activeCutscene) {
+      activeCutscene.onDone();
+      return;
+    }
+    if (modalStack.length > 0) {
+      popModal();
+      return;
+    }
+    const phase = engineRef.current?.phase;
+    if (phase === 'PLAYING' || phase === 'PAUSED') {
+      engineRef.current?.togglePause();
+      return;
+    }
+    if (phase === 'VICTORY' || phase === 'DEFEAT') {
+      engineRef.current?.returnToTitle();
+      return;
+    }
+    setExitPromptOpen(true);
   };
 
-  // Android / Capacitor hardware back-button support
+  const navRef = useRef({
+    modalStack,
+    activeCutscene,
+    exitPromptOpen,
+    hudPhase: hud.phase,
+    handleBack: handleBackNavigation,
+  });
+  navRef.current = {
+    modalStack,
+    activeCutscene,
+    exitPromptOpen,
+    hudPhase: hud.phase,
+    handleBack: handleBackNavigation,
+  };
+
+  const historyGuardRef = useRef(false);
   useEffect(() => {
-    const handleHardwareBack = (e?: Event) => {
+    const isNested =
+      modalStack.length > 0 ||
+      Boolean(activeCutscene) ||
+      hud.phase !== 'TITLE_MENU' ||
+      exitPromptOpen;
+
+    if (isNested && !historyGuardRef.current) {
+      try {
+        window.history.pushState({ slayerNavGuard: true }, '');
+        historyGuardRef.current = true;
+      } catch {
+        // Ignore restricted history APIs
+      }
+    } else if (!isNested && historyGuardRef.current) {
+      historyGuardRef.current = false;
+    }
+  }, [modalStack.length, activeCutscene, hud.phase, exitPromptOpen]);
+
+  useEffect(() => {
+    const onBackEvent = (e?: Event) => {
       if (e && typeof e.preventDefault === 'function') e.preventDefault();
-      if (activeCutscene) {
-        activeCutscene.onDone();
-        return;
-      }
-      if (showSettings || showEncyclopedia || showShop || showCampaign || showCharSelect) {
-        const wasCharSelect = showCharSelect;
-        closeAllModals();
-        setPendingAfterCharSelect(null);
-        if (wasCharSelect && engineRef.current?.phase === 'TITLE_MENU') {
-          engineRef.current.setMenuMusicTheme('menu', saveRef.current.selectedCharacterId);
+      navRef.current.handleBack();
+    };
+
+    const onPopState = () => {
+      const n = navRef.current;
+      const isNested =
+        n.modalStack.length > 0 ||
+        Boolean(n.activeCutscene) ||
+        n.hudPhase !== 'TITLE_MENU' ||
+        n.exitPromptOpen;
+      if (isNested) {
+        try {
+          window.history.pushState({ slayerNavGuard: true }, '');
+          historyGuardRef.current = true;
+        } catch {
+          // Ignore
         }
-        return;
-      }
-      if (engineRef.current && (engineRef.current.phase === 'PLAYING' || engineRef.current.phase === 'PAUSED')) {
-        engineRef.current.togglePause();
+        n.handleBack();
+      } else {
+        historyGuardRef.current = false;
       }
     };
 
-    document.addEventListener('backbutton', handleHardwareBack);
-    const capApp = (window as unknown as {
-      Capacitor?: { Plugins?: { App?: { addListener?: (ev: string, cb: () => void) => { remove: () => void } } } };
-    }).Capacitor?.Plugins?.App;
-    const capHandle = capApp?.addListener?.('backButton', () => handleHardwareBack());
+    window.addEventListener('androidHardwareBack', onBackEvent);
+    document.addEventListener('backbutton', onBackEvent);
+    window.addEventListener('popstate', onPopState);
 
     return () => {
-      document.removeEventListener('backbutton', handleHardwareBack);
-      capHandle?.remove();
+      window.removeEventListener('androidHardwareBack', onBackEvent);
+      document.removeEventListener('backbutton', onBackEvent);
+      window.removeEventListener('popstate', onPopState);
     };
-  }, [
-    activeCutscene,
-    showSettings,
-    showEncyclopedia,
-    showShop,
-    showCampaign,
-    showCharSelect,
-  ]);
+  }, []);
 
   const maybePlayCutscene = (cutsceneId: string | undefined, after: () => void) => {
     const base = cutsceneId ? CUTSCENES[cutsceneId] : undefined;
@@ -336,16 +502,23 @@ export default function App() {
   };
 
   const launchTutorialWith = (charId: string, breathing: BreathingStyleId) => {
-    closeAllModals();
+    clearModals();
     const campaignInfo = getCharacterCampaignInfo(charId);
     const prof = getCharacterProfile(saveRef.current, charId);
     maybePlayCutscene(campaignInfo.prologueCutsceneId || 'cs_opening', () => {
-      engineRef.current?.startTutorial(charId, breathing, prof.upgrades, prof.selectedSkinId);
+      engineRef.current?.startTutorial(
+        charId,
+        breathing,
+        prof.upgrades,
+        prof.selectedSkinId,
+        prof.unlockedAwakenings,
+        prof.equippedUltimate
+      );
     });
   };
 
   const launchStoryLevelWith = (levelId: number, charId: string, breathing: BreathingStyleId) => {
-    closeAllModals();
+    clearModals();
     const campaign = getCampaignForCharacter(charId);
     const campaignInfo = getCharacterCampaignInfo(charId);
     const levelDef = campaign.find((l) => l.id === levelId) ?? campaign[0];
@@ -359,7 +532,10 @@ export default function App() {
         breathing,
         levelDef,
         prof.upgrades,
-        prof.selectedSkinId
+        prof.selectedSkinId,
+        prof.unlockedAwakenings,
+        prof.equippedUltimate,
+        saveRef.current.equippedDemonSkins
       );
     });
   };
@@ -370,7 +546,7 @@ export default function App() {
         launchTutorialWith(charId, breathing);
       });
       engineRef.current?.setMenuMusicTheme('char_select', save.selectedCharacterId);
-      setShowCharSelect(true);
+      pushModal('charSelect');
       return;
     }
     launchTutorialWith(save.selectedCharacterId, save.selectedBreathing);
@@ -382,10 +558,26 @@ export default function App() {
         launchStoryLevelWith(levelId, charId, breathing);
       });
       engineRef.current?.setMenuMusicTheme('char_select', save.selectedCharacterId);
-      setShowCharSelect(true);
+      pushModal('charSelect');
       return;
     }
     launchStoryLevelWith(levelId, save.selectedCharacterId, save.selectedBreathing);
+  };
+
+  const handleStartSurvival = () => {
+    clearModals();
+    const charId = saveRef.current.selectedCharacterId;
+    const prof = getCharacterProfile(saveRef.current, charId);
+    engineRef.current?.startSurvivalMode(
+      'infinity_castle',
+      charId,
+      saveRef.current.selectedBreathing,
+      prof.upgrades,
+      prof.selectedSkinId,
+      prof.unlockedAwakenings,
+      prof.equippedUltimate,
+      saveRef.current.equippedDemonSkins
+    );
   };
 
   const handleContinueGame = () => {
@@ -401,7 +593,7 @@ export default function App() {
     demon: DemonArchetype,
     breathing: BreathingStyleId
   ) => {
-    closeAllModals();
+    clearModals();
     const prof = getCharacterProfile(saveRef.current, saveRef.current.selectedCharacterId);
     engineRef.current?.startPracticeMatch(
       mapId,
@@ -409,7 +601,10 @@ export default function App() {
       saveRef.current.selectedCharacterId,
       breathing,
       prof.upgrades,
-      prof.selectedSkinId
+      prof.selectedSkinId,
+      prof.unlockedAwakenings,
+      prof.equippedUltimate,
+      saveRef.current.equippedDemonSkins
     );
   };
 
@@ -423,7 +618,7 @@ export default function App() {
     const updated = selectCharacterAndBreathing(save, charId, breathing, true);
     setSave(updated);
     engineRef.current?.setCoinsBalance(updated.coins);
-    setShowCharSelect(false);
+    setModalStack((prev) => prev.filter((m) => m !== 'charSelect'));
     if (pendingAfterCharSelect) {
       const next = pendingAfterCharSelect;
       setPendingAfterCharSelect(null);
@@ -447,6 +642,8 @@ export default function App() {
     if (res.ok) {
       setSave(res.save);
       engineRef.current?.setCoinsBalance(res.save.coins);
+      engineRef.current?.sound.unlock();
+      engineRef.current?.sound.playUpgradeChime();
     }
     return { ok: res.ok, message: res.message };
   };
@@ -456,10 +653,84 @@ export default function App() {
     setSave(updated);
   };
 
+  const handleBuySkin = (charId: string, skinId: string) => {
+    const skin = getCharacterSkins(charId).find((s) => s.id === skinId);
+    if (!skin) return { ok: false, message: 'Skin not found.' };
+    const res = purchaseCharacterSkin(save, charId, skin.id, skin.name, skin.price);
+    if (res.ok) {
+      setSave(res.save);
+      engineRef.current?.setCoinsBalance(res.save.coins);
+      engineRef.current?.sound.unlock();
+      engineRef.current?.sound.playUpgradeChime();
+    }
+    return { ok: res.ok, message: res.message };
+  };
+
+  const handleBuyAwakening = (charId: string, tierId: AwakeningTierId) => {
+    const tier = AWAKENING_SPECS[tierId];
+    const res = purchaseAwakeningTier(save, charId, tierId, tier.name, tier.price);
+    if (res.ok) {
+      setSave(res.save);
+      engineRef.current?.setCoinsBalance(res.save.coins);
+      engineRef.current?.sound.unlock();
+      engineRef.current?.sound.playUpgradeChime();
+    }
+    return { ok: res.ok, message: res.message };
+  };
+
+  const handleBuyUltimate = (charId: string, ultId: UltimateId) => {
+    const ult = ULTIMATE_SPECS[ultId];
+    const res = purchaseUltimate(save, charId, ultId, ult.name, ult.price);
+    if (res.ok) {
+      setSave(res.save);
+      engineRef.current?.setCoinsBalance(res.save.coins);
+      engineRef.current?.sound.unlock();
+      engineRef.current?.sound.playUpgradeChime();
+    }
+    return { ok: res.ok, message: res.message };
+  };
+
+  const handleEquipUltimate = (charId: string, ultId: UltimateId) => {
+    const updated = equipUltimate(save, charId, ultId);
+    setSave(updated);
+  };
+
+  const handleBuyDemonSkin = (archetype: DemonArchetype, skinId: string) => {
+    const skin = getDemonSkins(archetype).find((s) => s.id === skinId);
+    if (!skin) return { ok: false, message: 'Demon skin not found.' };
+    const res = purchaseDemonSkin(save, archetype, skin.id, skin.name, skin.price);
+    if (res.ok) {
+      setSave(res.save);
+      engineRef.current?.setCoinsBalance(res.save.coins);
+      engineRef.current?.setEquippedDemonSkins(res.save.equippedDemonSkins);
+      engineRef.current?.sound.unlock();
+      engineRef.current?.sound.playUpgradeChime();
+    }
+    return { ok: res.ok, message: res.message };
+  };
+
+  const handleSelectDemonSkin = (archetype: DemonArchetype, skinId: string) => {
+    const updated = selectDemonSkin(save, archetype, skinId);
+    setSave(updated);
+    engineRef.current?.setEquippedDemonSkins(updated.equippedDemonSkins);
+  };
+
   const handleUpdateAudio = (audio: AudioSettings) => {
     const updated = updateAudioSettings(save, audio);
     setSave(updated);
     engineRef.current?.applyAudioSettings(audio);
+  };
+
+  const handleUpdateGameplay = (gameplay: GameplaySettings) => {
+    const updated = updateGameplaySettings(save, gameplay);
+    setSave(updated);
+    engineRef.current?.applyGameplaySettings(gameplay);
+  };
+
+  const handleSaveControlsLayout = (layout: TouchControlsLayout) => {
+    const updated = updateControlsLayout(save, layout);
+    setSave(updated);
+    popModal();
   };
 
   const handleToggleMuteHud = () => {
@@ -474,6 +745,8 @@ export default function App() {
     writeSaveData(updated);
     setSave(updated);
   };
+
+  const activePlayerProfile = getCharacterProfile(save, save.selectedCharacterId);
 
   return (
     <main
@@ -492,12 +765,18 @@ export default function App() {
           onTogglePause={() => engineRef.current?.togglePause()}
           onToggleMute={handleToggleMuteHud}
           onTriggerForm={(idx) => engineRef.current?.triggerBreathingForm(idx)}
+          onTriggerAwakening={() => engineRef.current?.triggerAwakening()}
+          onTriggerUltimate={() => engineRef.current?.triggerUltimate()}
         />
       )}
 
       {/* Android Multi-Touch Controls */}
-      {hud.phase === 'PLAYING' && engineReady && !activeCutscene && (
-        <MobileControls engine={engineRef.current} hud={hud} />
+      {hud.phase === 'PLAYING' && engineReady && !activeCutscene && !activeModal && (
+        <MobileControls
+          engine={engineRef.current}
+          hud={hud}
+          controlsLayout={save.controlsLayout}
+        />
       )}
 
       {/* Title / Pause / Victory / Defeat Overlays */}
@@ -506,29 +785,41 @@ export default function App() {
           hud={hud}
           save={save}
           onContinueGame={handleContinueGame}
-          onOpenCampaign={() => setShowCampaign(true)}
+          onStartSurvival={handleStartSurvival}
+          onOpenCampaign={() => pushModal('campaign')}
           onOpenCharSelect={() => {
             setPendingAfterCharSelect(null);
             engineRef.current?.setMenuMusicTheme('char_select', save.selectedCharacterId);
-            setShowCharSelect(true);
+            pushModal('charSelect');
           }}
-          onOpenShop={() => setShowShop(true)}
+          onOpenShop={() => pushModal('shop')}
+          onOpenUpgrades={() => pushModal('upgrades')}
+          onOpenDemonSkins={() => pushModal('demonSkins')}
+          onOpenStoryGallery={() => pushModal('storyGallery')}
           onStartTutorial={handleStartTutorial}
-          onOpenEncyclopedia={() => setShowEncyclopedia(true)}
-          onOpenSettings={() => setShowSettings(true)}
+          onOpenEncyclopedia={() => pushModal('encyclopedia')}
+          onOpenSettings={() => pushModal('settings')}
           onQuickPlayStory={() => handleStartStoryLevel(save.highestUnlockedLevel)}
           onResume={() => engineRef.current?.togglePause()}
           onRestart={() => {
             const prof = getCharacterProfile(save, save.selectedCharacterId);
-            engineRef.current?.restartCurrentBattle(prof.upgrades, prof.selectedSkinId);
+            engineRef.current?.restartCurrentBattle(
+              prof.upgrades,
+              prof.selectedSkinId,
+              prof.unlockedAwakenings,
+              prof.equippedUltimate
+            );
           }}
           onNextLevel={() => handleStartStoryLevel(Math.min(50, hud.levelId + 1))}
-          onReturnTitle={() => engineRef.current?.returnToTitle()}
+          onReturnTitle={() => {
+            clearModals();
+            engineRef.current?.returnToTitle();
+          }}
         />
       )}
 
-      {/* CHOOSE YOUR SLAYER Modal */}
-      {showCharSelect && (
+      {/* Single-Active Modal Stack */}
+      {activeModal === 'charSelect' && (
         <CharacterSelectModal
           save={save}
           subtitle={
@@ -537,59 +828,101 @@ export default function App() {
               : 'Select your active Slayer, Breathing Style, and independent campaign save.'
           }
           confirmLabel={pendingAfterCharSelect ? 'Confirm Slayer & Enter Battle' : undefined}
-          onClose={() => {
-            setShowCharSelect(false);
-            setPendingAfterCharSelect(null);
-            if (engineRef.current?.phase === 'TITLE_MENU') {
-              engineRef.current.setMenuMusicTheme('menu', save.selectedCharacterId);
-            }
-          }}
+          onClose={popModal}
+          onOpenUpgrades={pendingAfterCharSelect ? undefined : () => pushModal('upgrades')}
           onConfirmSelect={handleConfirmCharSelect}
         />
       )}
 
-      {/* 50-Level Story & 11-Map Practice Modal */}
-      {showCampaign && (
+      {activeModal === 'upgrades' && (
+        <CharacterUpgradeModal
+          save={save}
+          onClose={popModal}
+          onUpgradeStat={handleUpgradeStat}
+          onSelectSkin={handleSelectSkin}
+          onBuySkin={handleBuySkin}
+          onBuyAwakening={handleBuyAwakening}
+          onBuyUltimate={handleBuyUltimate}
+          onEquipUltimate={handleEquipUltimate}
+        />
+      )}
+
+      {activeModal === 'demonSkins' && (
+        <DemonSkinsModal
+          save={save}
+          onClose={popModal}
+          onBuyDemonSkin={handleBuyDemonSkin}
+          onSelectDemonSkin={handleSelectDemonSkin}
+        />
+      )}
+
+      {activeModal === 'storyGallery' && (
+        <StoryGalleryModal
+          save={save}
+          onClose={popModal}
+          onPlayCutscene={(csId) => {
+            clearModals();
+            const personalized = buildCutsceneForPlayer(
+              csId,
+              save.selectedCharacterId,
+              save.selectedBreathing
+            );
+            setActiveCutscene({
+              cutscene: personalized,
+              onDone: () => {
+                setSave((prev) => markCutsceneSeen(prev, csId));
+                setActiveCutscene(null);
+                if (engineRef.current?.phase === 'TITLE_MENU') {
+                  engineRef.current.setMenuMusicTheme('menu', save.selectedCharacterId);
+                }
+              },
+            });
+          }}
+        />
+      )}
+
+      {activeModal === 'campaign' && (
         <CampaignModal
           save={save}
-          onClose={() => setShowCampaign(false)}
+          onClose={popModal}
           onStartLevel={handleStartStoryLevel}
           onStartTutorial={handleStartTutorial}
           onStartPractice={handleStartPractice}
         />
       )}
 
-      {/* 15-Slayer Roster, Upgrades & Coin Shop Modal */}
-      {showShop && (
+      {activeModal === 'shop' && (
         <RosterShopModal
           save={save}
-          onClose={() => setShowShop(false)}
+          onClose={popModal}
           onSelectCharacter={handleSelectCharacter}
           onBuyCharacter={handleBuyCharacter}
           onUpgradeStat={handleUpgradeStat}
           onSelectSkin={handleSelectSkin}
+          onBuySkin={handleBuySkin}
         />
       )}
 
-      {/* 60-Demon Encyclopedia Modal */}
-      {showEncyclopedia && (
+      {activeModal === 'encyclopedia' && (
         <DemonEncyclopediaModal
-          onClose={() => setShowEncyclopedia(false)}
+          onClose={popModal}
           onChallengeDemon={(mapId, demon) =>
             handleStartPractice(mapId, demon, save.selectedBreathing)
           }
         />
       )}
 
-      {/* Audio & Cutscene Settings Modal */}
-      {showSettings && (
+      {activeModal === 'settings' && (
         <SettingsModal
           save={save}
-          onClose={() => setShowSettings(false)}
+          returnLabel={hud.phase === 'PAUSED' ? 'Pause Menu' : 'Main Menu'}
+          onClose={popModal}
+          onOpenCustomizeControls={() => pushModal('controls')}
           onUpdateAudio={handleUpdateAudio}
+          onUpdateGameplay={handleUpdateGameplay}
           onToggleSkipSeenCutscenes={handleToggleSkipSeenCutscenes}
           onReplayPrologue={() => {
-            setShowSettings(false);
+            clearModals();
             const campaignInfo = getCharacterCampaignInfo(save.selectedCharacterId);
             const personalized = buildCutsceneForPlayer(
               campaignInfo.prologueCutsceneId || 'cs_opening',
@@ -609,15 +942,57 @@ export default function App() {
         />
       )}
 
+      {activeModal === 'controls' && (
+        <ControlCustomizerModal
+          initialLayout={save.controlsLayout}
+          onBack={popModal}
+          onSave={handleSaveControlsLayout}
+        />
+      )}
+
       {/* Live 60 FPS Animated Story Cutscene Overlay */}
       {activeCutscene && (
         <CutsceneOverlay
           cutscene={activeCutscene.cutscene}
           sound={engineRef.current?.sound ?? fallbackSoundRef.current}
           subtitlesEnabled={save.audio.subtitlesEnabled}
+          gameplay={save.gameplay}
+          playerSkinId={activePlayerProfile.selectedSkinId}
+          equippedDemonSkins={save.equippedDemonSkins}
           onComplete={activeCutscene.onDone}
           onSkip={activeCutscene.onDone}
         />
+      )}
+
+      {/* Hardware Back Accidental-Exit Protection Dialog on Root Main Menu */}
+      {exitPromptOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-5 text-center shadow-2xl">
+            <h3 className="font-display text-lg font-bold text-white">Exit Demon Slayers?</h3>
+            <p className="mt-1.5 text-xs text-slate-300">
+              All campaign progress, unlocked Slayers, settings, and custom touch controls are saved.
+            </p>
+            <div className="mt-5 flex items-center justify-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setExitPromptOpen(false)}
+                className="min-h-[44px] flex-1 rounded-lg bg-sky-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-sky-400"
+              >
+                Stay in Game
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setExitPromptOpen(false);
+                  window.AndroidNavigation?.exitGame?.();
+                }}
+                className="min-h-[44px] flex-1 rounded-lg border border-rose-500/50 bg-rose-950/60 px-4 py-2 text-xs font-bold text-rose-200 hover:bg-rose-900/70"
+              >
+                Exit Game
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

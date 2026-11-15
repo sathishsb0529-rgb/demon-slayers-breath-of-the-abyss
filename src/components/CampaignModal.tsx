@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Lock, Play, Swords, Users, X } from 'lucide-react';
+import { ArrowLeft, Lock, Play, Swords, Users } from 'lucide-react';
 import { ALL_BREATHING_IDS, BREATHING_STYLES } from '../game/breathing';
 import {
   getCampaignForCharacter,
@@ -97,45 +97,45 @@ export function CampaignModal({
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/85 p-3 sm:p-6">
       <div className="flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-700/90 bg-slate-900 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-3.5 py-2.5 sm:px-6 sm:py-3">
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100 hover:border-sky-400 hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4 text-sky-300" />
+              <span>Back</span>
+            </button>
             <div>
-              <h2 className="font-display text-lg font-bold text-white sm:text-xl">
+              <h2 className="font-display text-base font-bold text-white sm:text-xl">
                 {campaignInfo.campaignTitle}
               </h2>
               <p className="text-[11px] text-sky-300">
                 {activeChar.name} · Save Slot Lv.{save.highestUnlockedLevel}/50
               </p>
             </div>
-            <div className="flex items-center gap-1 rounded-lg bg-slate-950 p-1">
-              <button
-                type="button"
-                onClick={() => setTab('story')}
-                className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
-                  tab === 'story' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                50-Level Story
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab('practice')}
-                className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
-                  tab === 'practice' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Free Battle (11 Maps)
-              </button>
-            </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-1 rounded-lg bg-slate-950 p-1">
+            <button
+              type="button"
+              onClick={() => setTab('story')}
+              className={`min-h-[38px] rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                tab === 'story' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              50-Level Story
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('practice')}
+              className={`min-h-[38px] rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                tab === 'practice' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Free Battle (11 Maps)
+            </button>
+          </div>
         </div>
 
         {tab === 'story' ? (

@@ -1,6 +1,7 @@
 import { ARENA_LEFT, getMapWidth, GROUND_Y, WORLD_HEIGHT, WORLD_WIDTH } from './constants';
 import {
   ArenaDecorItem,
+  ArenaExploreCache,
   ArenaObstacle,
   ArenaPlatform,
   ArenaWaterZone,
@@ -36,6 +37,7 @@ export interface ArenaLayout {
   obstacles: ArenaObstacle[];
   waterZones: ArenaWaterZone[];
   decors: ArenaDecorItem[];
+  exploreCaches: ArenaExploreCache[];
 }
 
 export function getMapZones(mapId: MapId, worldWidth: number): MapZone[] {
@@ -137,6 +139,7 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
   const obstacles: ArenaObstacle[] = [];
   const waterZones: ArenaWaterZone[] = [];
   const decors: ArenaDecorItem[] = [];
+  const exploreCaches: ArenaExploreCache[] = [];
 
   const mkPlat = (
     id: string,
@@ -227,7 +230,7 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
         mkObs('c_o2', cx + 390, 48, 52, 'fence', true, 45)
       );
     }
-    return { worldWidth, zones, platforms, obstacles, waterZones, decors };
+    return { worldWidth, zones, platforms, obstacles, waterZones, decors, exploreCaches };
   }
 
   // EXPANSIVE MULTI-ZONE WORLD LAYOUT (9,600px to 12,000px)
@@ -300,7 +303,13 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
         kind: 'castle_pillar',
       });
     }
-    return { worldWidth, zones, platforms, obstacles, waterZones, decors };
+    exploreCaches.push(
+      { id: 'ic_cache_1', x: zLen * 0.62, y: GROUND_Y, kind: 'coin_chest', coins: 28, energy: 10, hp: 0, collected: false },
+      { id: 'ic_cache_2', x: z2 + zLen * 0.45, y: GROUND_Y - 125, kind: 'spirit_shrine', coins: 20, energy: 30, hp: 15, collected: false },
+      { id: 'ic_cache_3', x: z3 + zLen * 0.55, y: GROUND_Y, kind: 'wisteria_cache', coins: 25, energy: 15, hp: 30, collected: false },
+      { id: 'ic_cache_4', x: z4 + 280, y: GROUND_Y, kind: 'spirit_shrine', coins: 30, energy: 35, hp: 20, collected: false }
+    );
+    return { worldWidth, zones, platforms, obstacles, waterZones, decors, exploreCaches };
   }
 
   // Natural & Village Maps: Connected Biomes across 4 expansive zones
@@ -402,7 +411,14 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
     mkObs('z4_ob_r', bossCenter + 470, 48, 56, 'fence', true, 50)
   );
 
-  return { worldWidth, zones, platforms, obstacles, waterZones, decors };
+  exploreCaches.push(
+    { id: `${mapId}_cache_1`, x: zLen * 0.65, y: GROUND_Y, kind: 'coin_chest', coins: 22, energy: 10, hp: 0, collected: false },
+    { id: `${mapId}_cache_2`, x: z2 + zLen * 0.55, y: GROUND_Y, kind: 'wisteria_cache', coins: 24, energy: 15, hp: 28, collected: false },
+    { id: `${mapId}_cache_3`, x: z3 + zLen * 0.48, y: GROUND_Y, kind: 'spirit_shrine', coins: 26, energy: 30, hp: 15, collected: false },
+    { id: `${mapId}_cache_4`, x: bossCenter - 620, y: GROUND_Y, kind: 'coin_chest', coins: 30, energy: 20, hp: 15, collected: false }
+  );
+
+  return { worldWidth, zones, platforms, obstacles, waterZones, decors, exploreCaches };
 }
 
 export class ArenaRenderer {
@@ -654,7 +670,9 @@ export class ArenaRenderer {
     cameraX = WORLD_WIDTH * 0.5,
     worldWidth = WORLD_WIDTH,
     waterZones: ArenaWaterZone[] = [],
-    decors: ArenaDecorItem[] = []
+    decors: ArenaDecorItem[] = [],
+    exploreCaches: ArenaExploreCache[] = [],
+    isDomaFrost = false
   ): void {
     const viewLeft = Math.max(0, cameraX - 1150);
     const viewRight = Math.min(worldWidth, cameraX + 1150);
@@ -712,6 +730,9 @@ export class ArenaRenderer {
     // Interactive / Destructible Obstacles
     this.renderObstacles(ctx, obstacles, viewLeft, viewRight);
 
+    // Exploration Caches (Coin Chests, Wisteria Lantern Caches, Spirit Shrines)
+    this.renderExploreCaches(ctx, exploreCaches, viewLeft, viewRight);
+
     // Arena Boundary Lanterns
     this.drawStoneLantern(ctx, ARENA_LEFT - 18, GROUND_Y, mapId === 'infinity_castle' ? '#f43f5e' : '#fde047');
     this.drawStoneLantern(ctx, worldWidth - ARENA_LEFT + 18, GROUND_Y, mapId === 'infinity_castle' ? '#f43f5e' : '#fde047');
@@ -742,12 +763,26 @@ export class ArenaRenderer {
     // Shimmering River & Waterfall Pool Zones inlaid into the ground plane
     this.renderWaterZones(ctx, waterZones, viewLeft, viewRight);
 
+    if (isDomaFrost) {
+      ctx.save();
+      const pulse = 0.22 + 0.1 * Math.sin(this.time * 3.5);
+      const iceGrad = ctx.createLinearGradient(0, GROUND_Y - 14, 0, GROUND_Y + 18);
+      iceGrad.addColorStop(0, 'rgba(186, 230, 253, 0)');
+      iceGrad.addColorStop(0.55, `rgba(186, 230, 253, ${pulse})`);
+      iceGrad.addColorStop(1, 'rgba(14, 165, 233, 0.3)');
+      ctx.fillStyle = iceGrad;
+      ctx.fillRect(viewLeft - 60, GROUND_Y - 14, viewRight - viewLeft + 120, 32);
+      ctx.restore();
+    }
+
     ctx.strokeStyle =
-      mapId === 'infinity_castle'
-        ? 'rgba(251, 191, 36, 0.65)'
-        : mapId === 'snowy_mountain'
-          ? 'rgba(248, 250, 252, 0.7)'
-          : 'rgba(125, 211, 252, 0.35)';
+      isDomaFrost
+        ? 'rgba(186, 230, 253, 0.85)'
+        : mapId === 'infinity_castle'
+          ? 'rgba(251, 191, 36, 0.65)'
+          : mapId === 'snowy_mountain'
+            ? 'rgba(248, 250, 252, 0.7)'
+            : 'rgba(125, 211, 252, 0.35)';
     ctx.lineWidth = 2.2;
     ctx.beginPath();
     ctx.moveTo(viewLeft - 120, GROUND_Y);
@@ -1053,6 +1088,57 @@ export class ArenaRenderer {
         ctx.lineTo(o.x + o.w * 0.35, o.y + o.h * 0.5);
         ctx.lineTo(o.x + o.w * 0.65, o.y + o.h - 6);
         ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  private renderExploreCaches(
+    ctx: CanvasRenderingContext2D,
+    caches: ArenaExploreCache[],
+    viewLeft: number,
+    viewRight: number
+  ): void {
+    for (const c of caches) {
+      if (c.collected) continue;
+      if (c.x < viewLeft - 80 || c.x > viewRight + 80) continue;
+      ctx.save();
+      const pulse = 0.65 + 0.35 * Math.sin(this.time * 4.5 + c.x * 0.01);
+      const glowColor =
+        c.kind === 'wisteria_cache'
+          ? '#c084fc'
+          : c.kind === 'spirit_shrine'
+            ? '#38bdf8'
+            : '#fbbf24';
+      ctx.globalAlpha = pulse * 0.45;
+      ctx.fillStyle = glowColor;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y - 22, 26, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      if (c.kind === 'coin_chest') {
+        ctx.fillStyle = '#78350f';
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2;
+        ctx.fillRect(c.x - 18, c.y - 28, 36, 28);
+        ctx.strokeRect(c.x - 18, c.y - 28, 36, 28);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(c.x - 4, c.y - 20, 8, 8);
+      } else if (c.kind === 'wisteria_cache') {
+        ctx.fillStyle = '#3b0764';
+        ctx.strokeStyle = '#c084fc';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y - 22, 14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.fillRect(c.x - 14, c.y - 36, 28, 36);
+        ctx.strokeRect(c.x - 14, c.y - 36, 28, 36);
       }
       ctx.restore();
     }

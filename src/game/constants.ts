@@ -45,6 +45,14 @@ export const FORM_ENERGY_COSTS: Record<1 | 2 | 3 | 4 | 5, number> = {
   5: 50,
 };
 
+export function getFormEnergyCost(formIndex: number, totalForms = 5): number {
+  if (formIndex <= 5) {
+    return FORM_ENERGY_COSTS[Math.max(1, formIndex) as 1 | 2 | 3 | 4 | 5] ?? 20;
+  }
+  const ratio = Math.min(1, (formIndex - 1) / Math.max(1, totalForms - 1));
+  return Math.round(14 + ratio * 42);
+}
+
 export const BASE_ATTACK_SPECS: Record<
   | 'LIGHT_1'
   | 'LIGHT_2'

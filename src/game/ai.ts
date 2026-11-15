@@ -3,7 +3,7 @@ import { buildBreathingAttackSpec } from './breathing';
 import { BASE_ATTACK_SPECS, DEMON_ATTACK_SPECS, PLAYER_JUMP_VELOCITY } from './constants';
 import { DEMON_ABILITY_DB, DEMON_TEMPLATES } from './demons';
 import { ParticleSystem } from './particles';
-import { BdaProjectile, DemonArchetype, Fighter } from './types';
+import { ArenaObstacle, ArenaPlatform, BdaProjectile, DemonArchetype, Fighter } from './types';
 
 export interface AiBdaSpawn {
   projectiles?: Omit<BdaProjectile, 'id'>[];
@@ -57,7 +57,9 @@ export class EnemyAI {
     sound: SoundEngine,
     particles: ParticleSystem,
     allowCloneSpawn = true,
-    isEngaged = true
+    isEngaged = true,
+    obstacles: ArenaObstacle[] = [],
+    _platforms: ArenaPlatform[] = []
   ): AiBdaSpawn | null {
     this.telegraphTimer = Math.max(0, this.telegraphTimer - dt);
     if (this.telegraphTimer <= 0) {
@@ -99,8 +101,13 @@ export class EnemyAI {
       particles.spawnFloatingText(demon.x, demon.y - 135, 'AWAKENED PHASE II!', template.bdaColor, 1.25);
     }
 
-    // Demon cellular regeneration (paused while staggered in ragdoll or poisoned)
-    if (template.regenPerSec > 0 && demon.state !== 'RAGDOLL' && demon.poisonTimer <= 0) {
+    // Demon cellular regeneration (paused while staggered in ragdoll, poisoned, or scorched by Bright Red Blade)
+    if (
+      template.regenPerSec > 0 &&
+      demon.state !== 'RAGDOLL' &&
+      demon.poisonTimer <= 0 &&
+      demon.redBladeBurnTimer <= 0
+    ) {
       demon.regenTimer += dt;
       if (demon.regenTimer >= 1.0) {
         demon.regenTimer = 0;
@@ -143,7 +150,19 @@ export class EnemyAI {
       }
     }
 
-    const paceDt = dt * chillFactor * (demon.bossPhase === 3 ? 1.26 : demon.bossPhase === 2 ? 1.12 : 1.0);
+    const targetHasTransparent =
+      target.awakeningActive &&
+      (target.awakeningTier === 'transparent_world' || target.awakeningTier === 'transcendent');
+    const targetHasSelfless =
+      target.awakeningActive &&
+      (target.awakeningTier === 'selfless_state' || target.awakeningTier === 'transcendent');
+    const transparentSlow = targetHasTransparent ? 0.82 : 1.0;
+
+    const paceDt =
+      dt *
+      chillFactor *
+      transparentSlow *
+      (demon.bossPhase === 3 ? 1.26 : demon.bossPhase === 2 ? 1.12 : 1.0);
     this.attackCooldown = Math.max(0, this.attackCooldown - paceDt);
     this.decisionCooldown = Math.max(0, this.decisionCooldown - paceDt);
     this.bdaCooldown = Math.max(0, this.bdaCooldown - paceDt);
@@ -165,6 +184,31 @@ export class EnemyAI {
     const isMuzanTier =
       arch === 'boss_muzan' || arch === 'muzan_final' || arch === 'demon_king_tanjiro';
 
+    // Smart AI 5-Hit Counter Breakaway: if taking ~5 consecutive strikes, force defensive dodge/guard or counterattack!
+    if ((demon.consecutiveHitsTaken ?? 0) >= 5 && this.defenseCooldown <= 0.35) {
+      demon.consecutiveHitsTaken = 0;
+      this.defenseCooldown = 1.6;
+      if (absDx < 140 && Math.random() < 0.55) {
+        demon.currentAttack = DEMON_ATTACK_SPECS.DEMON_KICK;
+        demon.state = 'ATTACK_WINDUP';
+        demon.stateTimer = 0;
+        demon.attackSwingId += 1;
+        demon.hitTargetsThisSwing.clear();
+        demon.vx = 0;
+        this.setTelegraph('COUNTER BREAKAWAY!', 0.65);
+        sound.playDemonTelegraph();
+        return null;
+      } else {
+        demon.state = 'DODGE';
+        demon.stateTimer = 0;
+        demon.invulnTimer = 0.28;
+        demon.vx = -demon.facing * 600;
+        sound.playDodge();
+        particles.spawnFloatingText(demon.x, demon.y - 115, 'EVASIVE STEP!', '#fda4af', 0.85);
+        return null;
+      }
+    }
+
     if (target.state === 'RAGDOLL' && absDx < 155 && !isMuzanTier && !isAkaza) {
       demon.state = 'IDLE';
       demon.vx *= 0.85;
@@ -179,7 +223,10 @@ export class EnemyAI {
       target.state === 'COUNTER_ATTACK';
 
     if (incomingThreat && absDx < 175 && this.defenseCooldown <= 0) {
-      const dodgeProb = isAkaza ? Math.min(0.75, specDb.dodgeChance + 0.25) : specDb.dodgeChance;
+      const akazaPenalty = targetHasSelfless ? -0.22 : 0.25;
+      const dodgeProb = isAkaza
+        ? Math.max(0.12, Math.min(0.75, specDb.dodgeChance + akazaPenalty))
+        : specDb.dodgeChance;
       if (Math.random() < dodgeProb) {
         demon.state = 'DODGE';
         demon.stateTimer = 0;
@@ -188,8 +235,17 @@ export class EnemyAI {
         this.defenseCooldown = isAkaza ? 1.35 : 1.85;
         sound.playDodge();
         if (isAkaza) {
-          this.setTelegraph('COMPASS NEEDLE: SENSING FIGHTING SPIRIT!', 0.85);
-          particles.spawnFloatingText(demon.x, demon.y - 122, 'COMPASS EVADE!', '#38bdf8', 0.9);
+          this.setTelegraph(
+            targetHasSelfless ? 'COMPASS DISRUPTED!' : 'COMPASS NEEDLE: SENSING FIGHTING SPIRIT!',
+            0.85
+          );
+          particles.spawnFloatingText(
+            demon.x,
+            demon.y - 122,
+            targetHasSelfless ? 'SPIRIT LOST!' : 'COMPASS EVADE!',
+            '#38bdf8',
+            0.9
+          );
         }
         return null;
       } else if ((specDb.canBlock || isRui) && Math.random() < (isRui ? 0.65 : 0.45)) {
@@ -314,9 +370,38 @@ export class EnemyAI {
       };
     }
 
-    // Distance management: Ranged casters zone cleanly; Akaza & Kokushibo pressure aggressively
+    // Distance management + Intelligent Solid Obstacle Jumping / Destroying
     const baseMove = isAkaza || arch === 'fast' || arch === 'chachamaru' ? 285 : isGyutaro ? 260 : 215;
-    const moveSpeed = baseMove * demon.speedMult * chillFactor;
+    const moveSpeed = baseMove * demon.speedMult * chillFactor * transparentSlow;
+
+    // Detect solid obstacle directly in path
+    const blockingObstacle = obstacles.find(
+      (o) =>
+        o.solid &&
+        o.hp > 0 &&
+        demon.y > o.y + 8 &&
+        ((demon.facing === 1 && o.x >= demon.x && o.x - demon.x < 78) ||
+          (demon.facing === -1 && o.x + o.w <= demon.x && demon.x - (o.x + o.w) < 78))
+    );
+
+    if (blockingObstacle) {
+      if (blockingObstacle.destructible && this.attackCooldown <= 0 && Math.random() < 0.48) {
+        demon.currentAttack = DEMON_ATTACK_SPECS.DEMON_CLAW;
+        demon.state = 'ATTACK_WINDUP';
+        demon.stateTimer = 0;
+        demon.attackSwingId += 1;
+        demon.hitTargetsThisSwing.clear();
+        demon.vx = 0;
+        this.attackCooldown = 0.65;
+        return null;
+      } else if (demon.grounded) {
+        demon.vy = PLAYER_JUMP_VELOCITY * 0.96;
+        demon.grounded = false;
+        demon.vx = demon.facing * moveSpeed;
+        demon.state = 'JUMP';
+        return null;
+      }
+    }
 
     if (absDx > specDb.preferredMaxDist) {
       demon.vx = demon.facing * moveSpeed;

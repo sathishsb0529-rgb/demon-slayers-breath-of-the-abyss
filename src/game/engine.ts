@@ -8,15 +8,19 @@ import {
 import { ArenaRenderer, createArenaLayout, getMapZones } from './arena';
 import { SoundEngine } from './audio';
 import {
+  AWAKENING_SPECS,
   BREATHING_STYLES,
   buildBreathingAttackSpec,
+  buildUltimateAttackSpec,
+  getHighestAwakeningTier,
+  ULTIMATE_SPECS,
 } from './breathing';
 import {
   getLevelById,
   MAP_DISPLAY_NAMES,
   TUTORIAL_STEPS,
 } from './campaign';
-import { getCharacterById, getCharacterSkins, SLAYER_CHARACTERS } from './characters';
+import { getCharacterById, getCharacterSkins, getDemonSkins, SLAYER_CHARACTERS } from './characters';
 import {
   getActiveAttackHitbox,
   getFighterHurtbox,
@@ -31,7 +35,7 @@ import {
   DODGE_COOLDOWN,
   DODGE_DURATION,
   DODGE_SPEED,
-  FORM_ENERGY_COSTS,
+  getFormEnergyCost,
   GRAVITY,
   GROUND_Y,
   HEAVY_ATTACK_COOLDOWN,
@@ -51,26 +55,42 @@ import {
 } from './physics';
 import {
   ArenaDecorItem,
+  ArenaExploreCache,
   ArenaObstacle,
   ArenaPlatform,
   ArenaWaterZone,
   AttackSpec,
   AudioSettings,
+  AwakeningTierId,
   BdaProjectile,
   BreathingStyleId,
   CharacterUpgrades,
   DemonArchetype,
   Fighter,
   FighterActionState,
+  FighterVisualProfile,
   GameMode,
   GamePhase,
+  GameplaySettings,
   HudSnapshot,
   InputState,
   MapId,
   MapZone,
   StoryEnemySpawn,
   StoryLevelDef,
+  UltimateId,
 } from './types';
+
+const SLAYER_HAORI_PATTERNS: Record<string, FighterVisualProfile['haoriPattern']> = {
+  tanjiro: 'checkered',
+  zenitsu: 'triangles',
+  giyu: 'half_half',
+  rengoku: 'flame',
+  shinobu: 'butterfly',
+  kanao: 'butterfly',
+  obanai: 'stripes',
+  muichiro: 'mist_clouds',
+};
 
 function createSlayerFighter(
   id: string,
@@ -79,11 +99,14 @@ function createSlayerFighter(
   breathingStyle: BreathingStyleId,
   startX: number,
   upgrades?: CharacterUpgrades,
-  skinId?: string
+  skinId?: string,
+  unlockedAwakenings: AwakeningTierId[] = [],
+  equippedUltimate: UltimateId = 'eternal_sun'
 ): Fighter {
   const def = getCharacterById(charId);
   const vitLv = upgrades?.vitality ?? 0;
   const bladeLv = upgrades?.blade ?? 0;
+  const defLv = upgrades?.defense ?? 0;
   const breathLv = upgrades?.breathing ?? 0;
 
   const skin = skinId
@@ -92,8 +115,10 @@ function createSlayerFighter(
 
   const maxHp = def.maxHp + vitLv * 22;
   const damageMult = def.damageMult * (1 + bladeLv * 0.09);
-  const speedMult = def.speedMult * (1 + breathLv * 0.05);
+  const speedMult = def.speedMult * (1 + breathLv * 0.04);
   const energyRegen = def.energyRegen + breathLv * 1.4;
+  const defenseReduction = Math.min(0.58, (def.id === 'genya' ? 0.12 : 0) + defLv * 0.07);
+  const formCount = BREATHING_STYLES[breathingStyle].forms.length;
 
   return {
     id,
@@ -104,7 +129,7 @@ function createSlayerFighter(
     visual: {
       skinColor: def.skinColor,
       hairColor: def.hairColor,
-      uniformColor: def.uniformColor,
+      uniformColor: skin?.uniformColor ?? def.uniformColor,
       haoriPrimary: skin?.haoriPrimary ?? def.haoriPrimary,
       haoriAccent: skin?.haoriAccent ?? def.haoriAccent,
       scarfColor: skin?.scarfColor ?? def.scarfColor,
@@ -120,12 +145,18 @@ function createSlayerFighter(
             : 'standard',
       hasHorns: def.id === 'nezuko_ally',
       hornColor: '#f43f5e',
+      hasMarkings: skin?.hasMarkings,
+      markingColor: skin?.markingColor,
+      haoriPattern: SLAYER_HAORI_PATTERNS[def.id],
+      renderStyle: skin?.renderStyle ?? 'anime',
+      skinId: skin?.id ?? 'classic',
     },
     breathingStyle,
     damageMult,
     speedMult,
     attackSpeedMult: def.attackSpeedMult,
     energyRegen,
+    defenseReduction,
     x: startX,
     y: GROUND_Y,
     vx: 0,
@@ -155,7 +186,7 @@ function createSlayerFighter(
     secondHitFired: false,
     heavyCooldown: 0,
     maxHeavyCooldown: HEAVY_ATTACK_COOLDOWN,
-    formCooldowns: [0, 0, 0, 0, 0],
+    formCooldowns: new Array(formCount).fill(0),
     dodgeCooldown: 0,
     invulnTimer: 0,
     counterWindowTimer: 0,
@@ -177,23 +208,53 @@ function createSlayerFighter(
     height: 98,
     hitCount: 0,
     damageTaken: 0,
+    awakeningMeter: 0,
+    awakeningActive: false,
+    awakeningTimer: 0,
+    awakeningCooldown: 0,
+    awakeningTier: getHighestAwakeningTier(unlockedAwakenings),
+    unlockedAwakenings: [...unlockedAwakenings],
+    equippedUltimate,
+    ultimateCooldown: 0,
+    redBladeBurnTimer: 0,
+    consecutiveHitsTaken: 0,
+    consecutiveHitTimer: 0,
   };
 }
 
 function createDemonFighter(
   spawn: StoryEnemySpawn,
   waveIdx: number,
-  startX: number
+  startX: number,
+  equippedDemonSkins?: Record<string, string>
 ): Fighter {
   const tpl = DEMON_TEMPLATES[spawn.archetype];
   const hp = Math.round(tpl.baseHp * (spawn.hpScale ?? 1));
+  const demonSkinId = equippedDemonSkins?.[spawn.archetype];
+  const demonSkin = demonSkinId ? getDemonSkins(spawn.archetype).find((s) => s.id === demonSkinId) : undefined;
+  const visual = { ...tpl.visual };
+  if (demonSkin) {
+    visual.renderStyle = demonSkin.renderStyle;
+    visual.skinId = demonSkin.id;
+    if (demonSkin.skinColor) visual.skinColor = demonSkin.skinColor;
+    if (demonSkin.uniformColor) visual.uniformColor = demonSkin.uniformColor;
+    if (demonSkin.haoriPrimary) visual.haoriPrimary = demonSkin.haoriPrimary;
+    if (demonSkin.haoriAccent) visual.haoriAccent = demonSkin.haoriAccent;
+    if (demonSkin.eyeColor) visual.eyeColor = demonSkin.eyeColor;
+    if (demonSkin.bladeColor) visual.bladeColor = demonSkin.bladeColor;
+    if (demonSkin.markingColor) {
+      visual.markingColor = demonSkin.markingColor;
+      visual.hornColor = demonSkin.markingColor;
+    }
+  }
+
   return {
     id: `demon_${waveIdx}_${spawn.archetype}`,
     name: spawn.name,
     subtitle: spawn.subtitle,
     role: 'demon',
     demonArchetype: spawn.archetype,
-    visual: { ...tpl.visual },
+    visual,
     breathingStyle: 'water',
     damageMult: tpl.damageMult * (spawn.damageScale ?? 1),
     speedMult: tpl.speedMult,
@@ -250,6 +311,17 @@ function createDemonFighter(
     height: 110,
     hitCount: 0,
     damageTaken: 0,
+    awakeningMeter: 0,
+    awakeningActive: false,
+    awakeningTimer: 0,
+    awakeningCooldown: 0,
+    awakeningTier: null,
+    unlockedAwakenings: [],
+    equippedUltimate: 'eternal_sun',
+    ultimateCooldown: 0,
+    redBladeBurnTimer: 0,
+    consecutiveHitsTaken: 0,
+    consecutiveHitTimer: 0,
   };
 }
 
@@ -257,6 +329,8 @@ export interface EngineCallbacks {
   onHudUpdate: (snapshot: HudSnapshot) => void;
   onTutorialComplete?: () => void;
   onLevelComplete?: (levelId: number, rank: 'S' | 'A' | 'B', coinsEarned: number, kills: number) => void;
+  onExploreCachePickup?: (cacheId: string, coins: number) => void;
+  onSurvivalComplete?: (wave: number, won: boolean, coinsEarned: number, demonsDefeated: number) => void;
 }
 
 export class GameEngine {
@@ -282,9 +356,40 @@ export class GameEngine {
   private zones: MapZone[] = [];
   private waterZones: ArenaWaterZone[] = [];
   private decors: ArenaDecorItem[] = [];
+  private exploreCaches: ArenaExploreCache[] = [];
+  private collectedCacheIdsThisRun = new Set<string>();
   private currentZoneIndex = 1;
   private enemyEngaged = true;
   private activeCampaignCharId = 'tanjiro';
+  private equippedDemonSkins: Record<string, string> = {};
+
+  // Survival 20-Wave Mode
+  private survivalWave = 1;
+  private survivalMaxWaves = 20;
+  private survivalCountdown = 0;
+  private survivalNextWavePending = false;
+  private survivalDefeatedCount = 0;
+
+  // Hybrid Finishing Cinematic Mode
+  private finishingTimer = 0;
+  private finishingDuration = 1.85;
+  private finishingTitle = '';
+  private finishingPendingCoins = 0;
+  private finishingPendingRank: 'S' | 'A' | 'B' = 'S';
+
+  // Live Boss / Upper Moon Speech Bubble & Sun 13th Form Combo
+  private activeSpeechBubble: {
+    speaker: string;
+    text: string;
+    isDemon: boolean;
+    timer: number;
+    target: 'player' | 'enemy';
+  } | null = null;
+  private lastEnemySpeechHpPct = 1.0;
+  private domaFrostStallTimer = 0;
+  private sunComboTicksRemaining = 0;
+  private sunComboTickTimer = 0;
+  private sunComboIdx = 0;
 
   public player: Fighter = createSlayerFighter('player', 'player', 'tanjiro', 'water', WORLD_WIDTH * 0.5 - 190);
   public enemy: Fighter = createDemonFighter(
@@ -322,6 +427,8 @@ export class GameEngine {
     lightPressed: false,
     heavyPressed: false,
     dodgePressed: false,
+    awakeningPressed: false,
+    ultimatePressed: false,
     formPressed: 0,
   };
 
@@ -335,6 +442,7 @@ export class GameEngine {
   private hudEmitAccum = 0;
   private runHoldTime = 0;
   private footstepAccum = 0;
+  private waterSplashTimer = 0;
   private ragdollHitsLanded = 0;
   private actionWarning: string | null = null;
   private actionWarningTimer = 0;
@@ -347,6 +455,14 @@ export class GameEngine {
   private viewW = 1280;
   private viewH = 720;
   private dpr = 1;
+  private gameplaySettings: GameplaySettings = {
+    bloodEffectsEnabled: false,
+    combatVisualEffects: true,
+    cinematicEffects: true,
+    dialogueEnabled: true,
+    cameraEffects: true,
+    performanceMode: false,
+  };
 
   constructor(canvas: HTMLCanvasElement, callbacks: EngineCallbacks) {
     this.canvas = canvas;
@@ -362,6 +478,7 @@ export class GameEngine {
     this.obstacles = layout.obstacles;
     this.waterZones = layout.waterZones;
     this.decors = layout.decors;
+    this.exploreCaches = layout.exploreCaches;
     this.zones = layout.zones;
     this.resize();
   }
@@ -371,16 +488,37 @@ export class GameEngine {
     this.emitHudSnapshot();
   }
 
+  public setEquippedDemonSkins(skins: Record<string, string>): void {
+    this.equippedDemonSkins = { ...skins };
+  }
+
   public applyAudioSettings(audio: AudioSettings): void {
     this.sound.applySettings(audio);
     this.emitHudSnapshot();
+  }
+
+  public applyGameplaySettings(gameplay: GameplaySettings): void {
+    this.gameplaySettings = { ...gameplay };
+    this.particles.setVisualSettings({
+      bloodEffectsEnabled: gameplay.bloodEffectsEnabled,
+      combatVisualEffects: gameplay.combatVisualEffects,
+      performanceMode: gameplay.performanceMode,
+    });
+    if (!gameplay.cameraEffects) {
+      this.shakeIntensity = 0;
+    }
+    if (!gameplay.cinematicEffects) {
+      this.hitstopTimer = 0;
+    }
+    this.resize();
   }
 
   public resize(): void {
     const parent = this.canvas.parentElement;
     const w = parent ? parent.clientWidth : window.innerWidth;
     const h = parent ? parent.clientHeight : window.innerHeight;
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const maxDpr = this.gameplaySettings.performanceMode ? 1.25 : 2;
+    this.dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
     this.viewW = Math.max(320, w);
     this.viewH = Math.max(240, h);
     this.canvas.width = Math.round(this.viewW * this.dpr);
@@ -414,7 +552,9 @@ export class GameEngine {
     charId: string,
     breathingStyle: BreathingStyleId,
     upgrades?: CharacterUpgrades,
-    skinId?: string
+    skinId?: string,
+    unlockedAwakenings?: AwakeningTierId[],
+    equippedUltimate?: UltimateId
   ): void {
     this.sound.unlock();
     this.mode = 'TUTORIAL';
@@ -429,6 +569,7 @@ export class GameEngine {
     this.obstacles = [];
     this.waterZones = [];
     this.decors = layout.decors;
+    this.exploreCaches = [];
     this.zones = [];
     this.currentZoneIndex = 1;
     this.enemyEngaged = true;
@@ -440,7 +581,9 @@ export class GameEngine {
       breathingStyle,
       WORLD_WIDTH * 0.5 - 230,
       upgrades,
-      skinId
+      skinId,
+      unlockedAwakenings,
+      equippedUltimate
     );
     this.enemy = createSlayerFighter('mentor', 'demon', 'giyu', 'water', WORLD_WIDTH * 0.5 + 110);
     this.enemy.name = 'Mentor Urokodaki';
@@ -487,7 +630,8 @@ export class GameEngine {
   }
 
   private spawnWaveFighters(spawn: StoryEnemySpawn, waveIdx: number, spawnX: number): void {
-    this.enemy = createDemonFighter(spawn, waveIdx, spawnX);
+    this.enemy = createDemonFighter(spawn, waveIdx, spawnX, this.equippedDemonSkins);
+    this.lastEnemySpeechHpPct = 1.0;
     if (spawn.partnerArchetype) {
       const pTpl = DEMON_TEMPLATES[spawn.partnerArchetype];
       this.partnerEnemy = createDemonFighter(
@@ -499,12 +643,115 @@ export class GameEngine {
           isBoss: spawn.isBoss,
         },
         waveIdx + 50,
-        Math.min(this.worldWidth - 140, spawnX + 145)
+        Math.min(this.worldWidth - 140, spawnX + 145),
+        this.equippedDemonSkins
       );
       this.partnerAI.reset();
     } else {
       this.partnerEnemy = null;
     }
+  }
+
+  private getSurvivalWaveSpawn(wave: number): StoryEnemySpawn {
+    const scale = 0.82 + (wave - 1) * 0.065;
+    const dmgScale = 0.85 + (wave - 1) * 0.032;
+    const roster: Array<{ arch: DemonArchetype; name: string; sub: string; boss?: boolean; partner?: DemonArchetype }> = [
+      { arch: 'basic', name: 'Night Stalker', sub: 'Wave 1 · Lesser Demon' },
+      { arch: 'fast', name: 'Fang Runner', sub: 'Wave 2 · Feral Demon' },
+      { arch: 'boss_hand', name: 'Hand Demon', sub: 'Wave 3 · Wisteria Prisoner' },
+      { arch: 'spider_brother_main', name: 'Spider Brother', sub: 'Wave 4 · Venom Swarm' },
+      { arch: 'kyogai', name: 'Kyogai', sub: 'Wave 5 · Tsuzumi Master', boss: true },
+      { arch: 'susamaru', name: 'Susamaru', sub: 'Wave 6 · Temari Fiend', partner: 'yahaba' },
+      { arch: 'boss_rui', name: 'Rui', sub: 'Wave 7 · Lower Rank Five', boss: true },
+      { arch: 'kamanue', name: 'Kamanue', sub: 'Wave 8 · Lower Rank Six' },
+      { arch: 'boss_enmu', name: 'Enmu', sub: 'Wave 9 · Lower Rank One', boss: true },
+      { arch: 'boss_daki', name: 'Daki', sub: 'Wave 10 · Upper Rank Six', boss: true },
+      { arch: 'gyutaro', name: 'Gyutaro', sub: 'Wave 11 · Blood Sickle Fury', boss: true },
+      { arch: 'kaigaku', name: 'Kaigaku', sub: 'Wave 12 · Thunder Upper Six', boss: true },
+      { arch: 'gyokko', name: 'Gyokko', sub: 'Wave 13 · Upper Rank Five', boss: true },
+      { arch: 'karaku', name: 'Hantengu Clones', sub: 'Wave 14 · Wind & Lightning', partner: 'sekido' },
+      { arch: 'zohakuten', name: 'Zohakuten', sub: 'Wave 15 · Upper Rank Four', boss: true },
+      { arch: 'boss_akaza', name: 'Akaza', sub: 'Wave 16 · Upper Rank Three', boss: true },
+      { arch: 'boss_nakime', name: 'Nakime', sub: 'Wave 17 · Biwa Spatial Upper Four', boss: true },
+      { arch: 'boss_doma', name: 'Doma', sub: 'Wave 18 · Upper Rank Two', boss: true },
+      { arch: 'kokushibo_demon', name: 'Kokushibo', sub: 'Wave 19 · Upper Rank One', boss: true },
+      { arch: 'muzan_final', name: 'Muzan Kibutsuji', sub: 'Wave 20 · Demon King Abyss', boss: true },
+    ];
+    const entry = roster[Math.min(roster.length - 1, Math.max(0, wave - 1))];
+    return {
+      archetype: entry.arch,
+      name: entry.name,
+      subtitle: entry.sub,
+      hpScale: wave === 20 ? 1.55 : scale,
+      damageScale: dmgScale,
+      isBoss: Boolean(entry.boss),
+      partnerArchetype: entry.partner,
+    };
+  }
+
+  public startSurvivalMode(
+    mapId: MapId,
+    charId: string,
+    breathingStyle: BreathingStyleId,
+    upgrades?: CharacterUpgrades,
+    skinId?: string,
+    unlockedAwakenings?: AwakeningTierId[],
+    equippedUltimate?: UltimateId,
+    equippedDemonSkins?: Record<string, string>
+  ): void {
+    this.sound.unlock();
+    if (equippedDemonSkins) this.equippedDemonSkins = { ...equippedDemonSkins };
+    this.mode = 'SURVIVAL';
+    this.mapId = mapId;
+    this.activeCampaignCharId = charId;
+    this.survivalWave = 1;
+    this.survivalMaxWaves = 20;
+    this.survivalCountdown = 0;
+    this.survivalNextWavePending = false;
+    this.survivalDefeatedCount = 0;
+
+    const layout = createArenaLayout(this.mapId, false);
+    this.worldWidth = layout.worldWidth;
+    this.platforms = layout.platforms;
+    this.obstacles = layout.obstacles;
+    this.waterZones = layout.waterZones;
+    this.decors = layout.decors;
+    this.exploreCaches = layout.exploreCaches;
+    this.zones = layout.zones.length > 0 ? layout.zones : getMapZones(this.mapId, this.worldWidth);
+
+    const playerStartX = Math.round(this.worldWidth * 0.45);
+    const enemyStartX = playerStartX + 460;
+
+    this.player = createSlayerFighter(
+      'player',
+      'player',
+      charId,
+      breathingStyle,
+      playerStartX,
+      upgrades,
+      skinId,
+      unlockedAwakenings,
+      equippedUltimate
+    );
+    const firstSpawn = this.getSurvivalWaveSpawn(1);
+    this.isCurrentBossBattle = Boolean(firstSpawn.isBoss);
+    this.sound.setMusicContext('survival', this.mapId, false, firstSpawn.archetype, charId);
+
+    this.spawnWaveFighters(firstSpawn, 0, enemyStartX);
+    this.cloneEnemy = null;
+    this.allies = [];
+    this.allyAIs = [];
+    this.projectiles = [];
+    this.particles.clear();
+    this.enemyAI.reset();
+    this.cloneAI.reset();
+    this.resetMatchCounters();
+    this.enemyEngaged = true;
+    this.cameraX = (playerStartX + enemyStartX) * 0.5;
+    this.phase = 'PLAYING';
+    this.updateZoneTracker();
+    this.particles.spawnFloatingText(playerStartX + 180, this.player.y - 140, 'SURVIVAL WAVE 1 / 20', '#fbbf24', 1.3);
+    this.emitHudSnapshot();
   }
 
   public startStoryLevel(
@@ -513,9 +760,13 @@ export class GameEngine {
     breathingStyle: BreathingStyleId,
     levelOverride?: StoryLevelDef,
     upgrades?: CharacterUpgrades,
-    skinId?: string
+    skinId?: string,
+    unlockedAwakenings?: AwakeningTierId[],
+    equippedUltimate?: UltimateId,
+    equippedDemonSkins?: Record<string, string>
   ): void {
     this.sound.unlock();
+    if (equippedDemonSkins) this.equippedDemonSkins = { ...equippedDemonSkins };
     const level = levelOverride ?? getLevelById(levelId);
     this.mode = 'STORY';
     this.currentLevel = level;
@@ -529,6 +780,7 @@ export class GameEngine {
     this.obstacles = layout.obstacles;
     this.waterZones = layout.waterZones;
     this.decors = layout.decors;
+    this.exploreCaches = layout.exploreCaches;
     this.zones = layout.zones.length > 0 ? layout.zones : getMapZones(this.mapId, this.worldWidth);
 
     const firstSpawn = level.enemies[0];
@@ -551,7 +803,9 @@ export class GameEngine {
       breathingStyle,
       playerStartX,
       upgrades,
-      skinId
+      skinId,
+      unlockedAwakenings,
+      equippedUltimate
     );
     this.spawnWaveFighters(firstSpawn, 0, wave0X);
     this.cloneEnemy = null;
@@ -559,6 +813,7 @@ export class GameEngine {
 
     if (this.isCurrentBossBattle && this.enemyEngaged) {
       this.sound.playBossEntrance();
+      this.triggerDemonSpeech(this.enemy, 'engage');
     }
 
     // Canon Squad & Hashira AI Allies
@@ -601,9 +856,13 @@ export class GameEngine {
     charId: string,
     breathingStyle: BreathingStyleId,
     upgrades?: CharacterUpgrades,
-    skinId?: string
+    skinId?: string,
+    unlockedAwakenings?: AwakeningTierId[],
+    equippedUltimate?: UltimateId,
+    equippedDemonSkins?: Record<string, string>
   ): void {
     this.sound.unlock();
+    if (equippedDemonSkins) this.equippedDemonSkins = { ...equippedDemonSkins };
     this.mode = 'PRACTICE';
     this.mapId = mapId;
     this.activeCampaignCharId = charId;
@@ -615,6 +874,7 @@ export class GameEngine {
     this.obstacles = layout.obstacles;
     this.waterZones = layout.waterZones;
     this.decors = layout.decors;
+    this.exploreCaches = layout.exploreCaches;
     this.zones = layout.zones.length > 0 ? layout.zones : getMapZones(this.mapId, this.worldWidth);
 
     const tpl = DEMON_TEMPLATES[demonArchetype];
@@ -634,7 +894,9 @@ export class GameEngine {
       breathingStyle,
       playerStartX,
       upgrades,
-      skinId
+      skinId,
+      unlockedAwakenings,
+      equippedUltimate
     );
     this.spawnWaveFighters(
       {
@@ -655,21 +917,31 @@ export class GameEngine {
     this.cloneAI.reset();
     this.resetMatchCounters();
     this.enemyEngaged = true;
+    this.triggerDemonSpeech(this.enemy, 'engage');
     this.cameraX = (playerStartX + enemyStartX) * 0.5;
     this.phase = 'PLAYING';
     this.updateZoneTracker();
     this.emitHudSnapshot();
   }
 
-  public restartCurrentBattle(upgrades?: CharacterUpgrades, skinId?: string): void {
+  public restartCurrentBattle(
+    upgrades?: CharacterUpgrades,
+    skinId?: string,
+    unlockedAwakenings?: AwakeningTierId[],
+    equippedUltimate?: UltimateId
+  ): void {
     const charId = this.player.characterId ?? this.activeCampaignCharId;
     const style = this.player.breathingStyle;
+    const awks = unlockedAwakenings ?? this.player.unlockedAwakenings;
+    const ult = equippedUltimate ?? this.player.equippedUltimate;
     if (this.mode === 'TUTORIAL') {
-      this.startTutorial(charId, style, upgrades, skinId);
+      this.startTutorial(charId, style, upgrades, skinId, awks, ult);
     } else if (this.mode === 'STORY') {
-      this.startStoryLevel(this.currentLevel.id, charId, style, this.currentLevel, upgrades, skinId);
+      this.startStoryLevel(this.currentLevel.id, charId, style, this.currentLevel, upgrades, skinId, awks, ult);
+    } else if (this.mode === 'SURVIVAL') {
+      this.startSurvivalMode(this.mapId, charId, style, upgrades, skinId, awks, ult);
     } else {
-      this.startPracticeMatch(this.mapId, this.enemy.demonArchetype ?? 'basic', charId, style, upgrades, skinId);
+      this.startPracticeMatch(this.mapId, this.enemy.demonArchetype ?? 'basic', charId, style, upgrades, skinId, awks, ult);
     }
   }
 
@@ -686,6 +958,12 @@ export class GameEngine {
     this.lastRank = null;
     this.killsThisRun = 0;
     this.cameraZoom = 1.0;
+    this.finishingTimer = 0;
+    this.activeSpeechBubble = null;
+    this.lastEnemySpeechHpPct = 1.0;
+    this.domaFrostStallTimer = 0;
+    this.sunComboTicksRemaining = 0;
+    this.collectedCacheIdsThisRun.clear();
     this.clearAllInputs();
   }
 
@@ -748,10 +1026,22 @@ export class GameEngine {
     }
   }
 
-  public triggerBreathingForm(formIndex: 1 | 2 | 3 | 4 | 5): void {
+  public triggerBreathingForm(formIndex: number): void {
     this.sound.unlock();
     if (this.phase !== 'PLAYING') return;
     this.input.formPressed = formIndex;
+  }
+
+  public triggerAwakening(): void {
+    this.sound.unlock();
+    if (this.phase !== 'PLAYING') return;
+    this.input.awakeningPressed = true;
+  }
+
+  public triggerUltimate(): void {
+    this.sound.unlock();
+    if (this.phase !== 'PLAYING') return;
+    this.input.ultimatePressed = true;
   }
 
   public clearHeldInputs(): void {
@@ -766,6 +1056,8 @@ export class GameEngine {
     this.input.lightPressed = false;
     this.input.heavyPressed = false;
     this.input.dodgePressed = false;
+    this.input.awakeningPressed = false;
+    this.input.ultimatePressed = false;
     this.input.formPressed = 0;
   }
 
@@ -815,6 +1107,87 @@ export class GameEngine {
     }
   }
 
+  private triggerDemonSpeech(f: Fighter, occasion: 'engage' | 'phase2' | 'ultimate'): void {
+    if (!this.gameplaySettings.dialogueEnabled) return;
+    const arch = f.demonArchetype ?? '';
+    const lines: Record<string, { engage: string; phase2: string; ultimate: string }> = {
+      rui: {
+        engage: 'Will you become part of my family… or be torn apart?',
+        phase2: 'Blood Demon Art: Cutting Thread Rotation!',
+        ultimate: 'My Crimson Threads never snap!',
+      },
+      enmu: {
+        engage: 'Sleep sweetly inside an endless nightmare…',
+        phase2: 'Become one with the Mugen Train!',
+        ultimate: 'Whispers of Forced Unconscious Sleep!',
+      },
+      boss_daki: {
+        engage: 'An ugly Slayer dares trespass in Yoshiwara?',
+        phase2: 'Eight-Layered Obi Slash!',
+        ultimate: 'You will never sever my sash!',
+      },
+      boss_gyutaro: {
+        engage: 'I envy that pretty face… let me slice it clean off!',
+        phase2: 'Rotating Circular Slashes: Flying Blood Sickles!',
+        ultimate: 'Die screaming in venom!',
+      },
+      zohakuten: {
+        engage: 'Only pure villainy strikes the weak—kneel!',
+        phase2: 'Infinite Wood Dragons: Soundwave Roar!',
+        ultimate: 'Compress and shatter!',
+      },
+      boss_akaza: {
+        engage: 'Become a demon, Kyojuro! Let us fight forever!',
+        phase2: 'Technique Development: Compass Needle — Annihilation!',
+        ultimate: 'Destructive Death: Blue Silver Chaotic Afterglow!',
+      },
+      akaza_awakened: {
+        engage: 'My battle spirit has evolved past my head!',
+        phase2: 'Chaotic Afterglow — Unbroken!',
+        ultimate: 'One hundred blows at once!',
+      },
+      boss_doma: {
+        engage: 'Let me save your sorrowful soul inside my frost…',
+        phase2: 'Scattering Lotuses · Rime — Water Lily Bodhisattva!',
+        ultimate: 'Breathe the crystalline mist and freeze!',
+      },
+      doma_final: {
+        engage: 'How radiant! Taste my frozen paradise!',
+        phase2: 'Crystalline Divine Child!',
+        ultimate: 'Wintry Icicles — Fall like petals!',
+      },
+      kokushibo_demon: {
+        engage: 'Show me how far you have honed the First Breath.',
+        phase2: 'Moon Breathing: Calamitous Tenman Crescent Moon!',
+        ultimate: 'Sixteenth Form: Moonbow — Half Moon!',
+      },
+      nakime: {
+        engage: 'The Infinity Castle shifts at a single pluck.',
+        phase2: 'Spatial Inversion!',
+        ultimate: 'You are trapped inside my biwa!',
+      },
+      boss_muzan: {
+        engage: 'You are all merely breathing dust beneath the Demon King.',
+        phase2: 'Black Blood Brambles — Shockwave Whip!',
+        ultimate: 'Perish under a thousand whips!',
+      },
+      muzan_final: {
+        engage: 'Even weakened by Tamayo’s poison, none survive me!',
+        phase2: 'Flesh Whip Cyclone — Shockwave Scream!',
+        ultimate: 'I am an eternal calamity!',
+      },
+    };
+    const pack = lines[arch];
+    if (!pack) return;
+    this.activeSpeechBubble = {
+      speaker: f.name.split('·')[0].trim(),
+      text: pack[occasion],
+      isDemon: true,
+      timer: 2.8,
+      target: 'enemy',
+    };
+  }
+
   private update(dt: number): void {
     this.arena.update(dt, this.mapId, this.platforms, this.worldWidth);
 
@@ -829,6 +1202,32 @@ export class GameEngine {
 
     if (this.phase === 'PAUSED') return;
 
+    if (this.phase === 'FINISHING') {
+      this.finishingTimer += dt;
+      const slowDt = dt * 0.28;
+      this.updateFighter(this.player, slowDt);
+      this.updateFighter(this.enemy, slowDt);
+      this.particles.update(slowDt);
+      this.cameraZoom += (1.34 - this.cameraZoom) * Math.min(1, dt * 6);
+      const midX = (this.player.x + this.enemy.x) * 0.5;
+      this.cameraX += (midX - this.cameraX) * Math.min(1, dt * 7);
+      if (this.finishingTimer >= this.finishingDuration) {
+        this.finalizeMatchVictory();
+      }
+      this.hudEmitAccum += dt;
+      if (this.hudEmitAccum >= 0.05) {
+        this.hudEmitAccum = 0;
+        this.emitHudSnapshot();
+      }
+      return;
+    }
+
+    if (this.activeSpeechBubble) {
+      this.activeSpeechBubble.timer -= dt;
+      if (this.activeSpeechBubble.timer <= 0) this.activeSpeechBubble = null;
+    }
+
+    this.waterSplashTimer = Math.max(0, this.waterSplashTimer - dt);
     this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 52);
     if (this.actionWarningTimer > 0) {
       this.actionWarningTimer -= dt;
@@ -848,6 +1247,11 @@ export class GameEngine {
 
       if (this.mode === 'TUTORIAL') {
         this.updateTutorialLogic(dt);
+      } else if (this.mode === 'SURVIVAL' && this.survivalNextWavePending) {
+        this.survivalCountdown = Math.max(0, this.survivalCountdown - dt);
+        if (this.survivalCountdown <= 0) {
+          this.advanceToNextSurvivalWave();
+        }
       } else {
         // Engage zone demon once player approaches within sight/combat distance
         const distToEnemy = Math.abs(this.player.x - this.enemy.x);
@@ -855,6 +1259,7 @@ export class GameEngine {
           this.enemyEngaged = true;
           if (this.isCurrentBossBattle) {
             this.sound.playBossEntrance();
+            this.triggerDemonSpeech(this.enemy, 'engage');
           } else {
             this.sound.playDemonRoar();
           }
@@ -867,6 +1272,28 @@ export class GameEngine {
           );
         }
 
+        // Boss Phase II dialogue speech trigger
+        const eHpPct = this.enemy.maxHp > 0 ? this.enemy.hp / this.enemy.maxHp : 0;
+        if (this.lastEnemySpeechHpPct > 0.5 && eHpPct <= 0.5 && eHpPct > 0) {
+          this.lastEnemySpeechHpPct = eHpPct;
+          this.triggerDemonSpeech(this.enemy, 'phase2');
+        }
+
+        // Doma Freezing Floor hazard when fighting Doma idle on ground
+        const isDomaBattle =
+          this.enemy.hp > 0 &&
+          (this.enemy.demonArchetype === 'boss_doma' || this.enemy.demonArchetype === 'doma_final');
+        if (isDomaBattle && this.enemyEngaged && this.player.grounded && Math.abs(this.player.vx) < 25) {
+          this.domaFrostStallTimer += dt;
+          if (this.domaFrostStallTimer >= 2.2) {
+            this.domaFrostStallTimer = 0;
+            this.player.chillTimer = Math.max(this.player.chillTimer, 1.8);
+            this.particles.spawnFloatingText(this.player.x, this.player.y - 110, 'FROZEN GROUND!', '#bae6fd', 0.85);
+          }
+        } else {
+          this.domaFrostStallTimer = Math.max(0, this.domaFrostStallTimer - dt * 2);
+        }
+
         const targets = [this.player, ...this.allies];
         const bdaSpawn = this.enemyAI.update(
           this.enemy,
@@ -875,7 +1302,9 @@ export class GameEngine {
           this.sound,
           this.particles,
           this.cloneEnemy === null,
-          this.enemyEngaged
+          this.enemyEngaged,
+          this.obstacles,
+          this.platforms
         );
         this.handleBdaSpawn(this.enemy, bdaSpawn);
 
@@ -887,7 +1316,9 @@ export class GameEngine {
             this.sound,
             this.particles,
             false,
-            this.enemyEngaged
+            this.enemyEngaged,
+            this.obstacles,
+            this.platforms
           );
           this.handleBdaSpawn(this.partnerEnemy, pBda);
         }
@@ -903,7 +1334,9 @@ export class GameEngine {
               this.sound,
               this.particles,
               false,
-              true
+              true,
+              this.obstacles,
+              this.platforms
             );
             this.handleBdaSpawn(this.cloneEnemy, cloneBda);
           }
@@ -941,7 +1374,7 @@ export class GameEngine {
       this.preventBodyOverlap();
       this.resolveAllCombat();
       this.updateProjectiles(dt);
-      if (this.mode !== 'TUTORIAL') {
+      if (this.mode !== 'TUTORIAL' && !this.survivalNextWavePending) {
         this.checkWaveOrMatchOutcome();
       }
     }
@@ -953,6 +1386,8 @@ export class GameEngine {
     this.input.lightPressed = false;
     this.input.heavyPressed = false;
     this.input.dodgePressed = false;
+    this.input.awakeningPressed = false;
+    this.input.ultimatePressed = false;
     this.input.formPressed = 0;
 
     this.hudEmitAccum += dt;
@@ -1016,6 +1451,64 @@ export class GameEngine {
 
     p.energy = Math.min(p.maxEnergy, p.energy + p.energyRegen * dt);
 
+    // Check Exploration Cache pickups along the map
+    for (const c of this.exploreCaches) {
+      if (c.collected) continue;
+      if (Math.abs(p.x - c.x) <= 52 && Math.abs(p.y - c.y) <= 78) {
+        c.collected = true;
+        if (!this.collectedCacheIdsThisRun.has(c.id)) {
+          this.collectedCacheIdsThisRun.add(c.id);
+          this.coinsEarnedThisRun += c.coins;
+          this.callbacks.onExploreCachePickup?.(c.id, c.coins);
+        }
+        if (c.hp > 0) {
+          p.hp = Math.min(p.maxHp, p.hp + c.hp);
+        }
+        if (c.energy > 0) {
+          p.energy = Math.min(p.maxEnergy, p.energy + c.energy);
+        }
+        if (c.kind === 'wisteria_cache') {
+          p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.12));
+        } else if (c.kind === 'spirit_shrine') {
+          p.awakeningMeter = Math.min(100, p.awakeningMeter + 22);
+        }
+        this.sound.playExplorePickup();
+        this.particles.spawnFloatingText(
+          c.x,
+          c.y - 68,
+          `+${c.coins} COINS!`,
+          c.kind === 'wisteria_cache' ? '#c084fc' : c.kind === 'spirit_shrine' ? '#38bdf8' : '#fbbf24',
+          1.15
+        );
+      }
+    }
+
+    // Handle Sun Breathing 13th Form continuous multi-slash loop
+    if (this.sunComboTicksRemaining > 0) {
+      this.sunComboTickTimer -= dt;
+      if (this.sunComboTickTimer <= 0) {
+        this.sunComboTickTimer = 0.24;
+        this.sunComboTicksRemaining -= 1;
+        this.sunComboIdx += 1;
+        const cycleStyle: BreathingStyleId[] = ['sun', 'flame', 'water', 'thunder', 'wind'];
+        const visualStyle = cycleStyle[this.sunComboIdx % cycleStyle.length];
+        p.attackSwingId += 1;
+        p.hitTargetsThisSwing.clear();
+        p.secondHitFired = false;
+        p.vx = p.facing * 260;
+        this.sound.playBreathingStyle(visualStyle, (this.sunComboIdx % 5) + 1);
+        this.particles.spawnBreathingEffect(
+          visualStyle,
+          (this.sunComboIdx % 5) + 1,
+          'dragon_finisher',
+          p.x,
+          p.y,
+          p.facing,
+          175
+        );
+      }
+    }
+
     if (p.hp <= 0 || p.state === 'RAGDOLL' || p.state === 'GETTING_UP' || p.state === 'DEFEATED') {
       return;
     }
@@ -1032,10 +1525,80 @@ export class GameEngine {
       p.state === 'FALL' ||
       p.state === 'BLOCK';
 
+    // Awakening activation
+    if (this.input.awakeningPressed && (canAct || p.state === 'LIGHT_ATTACK')) {
+      if (p.awakeningActive) {
+        this.showWarning('Awakening already active!');
+      } else if (p.awakeningCooldown > 0.1) {
+        this.showWarning(`Awakening recharging (${p.awakeningCooldown.toFixed(1)}s)`);
+      } else if (p.awakeningMeter < 100) {
+        this.showWarning(`Awakening at ${Math.round(p.awakeningMeter)}% (need 100%)`);
+      } else {
+        const tier = p.awakeningTier ?? 'mark';
+        const spec = AWAKENING_SPECS[tier];
+        p.awakeningTier = tier;
+        p.awakeningActive = true;
+        p.awakeningTimer = spec.duration;
+        p.awakeningMeter = 0;
+        p.invulnTimer = Math.max(p.invulnTimer, 0.55);
+        this.sound.playAwakening();
+        this.particles.spawnAwakeningBurst(p.x, p.y, spec.badgeColor);
+        this.particles.spawnFloatingText(p.x, p.y - 135, `${spec.name.toUpperCase()}!`, spec.badgeColor, 1.3);
+        this.shakeIntensity = Math.max(this.shakeIntensity, 9);
+      }
+    }
+
+    // Special Ultimate Attack activation
+    if (this.input.ultimatePressed && (canAct || p.state === 'LIGHT_ATTACK' || p.state === 'RUNNING_ATTACK')) {
+      const ultId = p.equippedUltimate ?? 'eternal_sun';
+      const ultDef = ULTIMATE_SPECS[ultId];
+      if (p.ultimateCooldown > 0.1) {
+        this.showWarning(`Ultimate ready in ${p.ultimateCooldown.toFixed(1)}s`);
+      } else if (p.energy < ultDef.energyCost) {
+        this.showWarning(`Need ${ultDef.energyCost}% Energy for Ultimate`);
+      } else {
+        const spec = buildUltimateAttackSpec(ultId, p.breathingStyle, p.damageMult);
+        p.energy -= ultDef.energyCost;
+        p.ultimateCooldown = ultDef.cooldown;
+        p.currentAttack = spec;
+        this.beginStateTransition(p, 'BREATHING_FORM', 0.05);
+        p.stateTimer = 0;
+        p.attackSwingId += 1;
+        p.hitTargetsThisSwing.clear();
+        p.secondHitFired = false;
+        p.invulnTimer = 0.72;
+        p.vx = p.facing * spec.forwardImpulse;
+        if (spec.verticalImpulse) {
+          p.vy = spec.verticalImpulse;
+          p.grounded = false;
+        }
+        this.sound.playUltimate(ultId);
+        this.particles.spawnUltimateBurst(p.x, p.y, ultDef.color, ultDef.secondaryColor);
+        this.particles.spawnFloatingText(p.x, p.y - 135, ultDef.name.toUpperCase(), ultDef.color, 1.35);
+        this.shakeIntensity = Math.max(this.shakeIntensity, 14);
+        if (this.gameplaySettings.dialogueEnabled) {
+          this.activeSpeechBubble = {
+            speaker: p.name.split(' ')[0],
+            text: `${ultDef.name}!`,
+            isDemon: false,
+            timer: 2.0,
+            target: 'player',
+          };
+        }
+        return;
+      }
+    }
+
     if (this.input.formPressed > 0 && (canAct || p.state === 'LIGHT_ATTACK' || p.state === 'RUNNING_ATTACK')) {
-      const idx = this.input.formPressed as 1 | 2 | 3 | 4 | 5;
-      const cost = FORM_ENERGY_COSTS[idx];
-      const cd = p.formCooldowns[idx - 1];
+      const styleDef = BREATHING_STYLES[p.breathingStyle];
+      const idx = Math.max(1, Math.min(styleDef.forms.length, this.input.formPressed));
+      const formDef = styleDef.forms[idx - 1];
+      if (formDef.isUnknown) {
+        this.showWarning(`${formDef.name}: Canon form unknown (sealed)`);
+        return;
+      }
+      const cost = getFormEnergyCost(idx, styleDef.forms.length);
+      const cd = p.formCooldowns[idx - 1] ?? 0;
 
       if (cd > 0.05) {
         this.showWarning(`Form ${idx} cooling down (${cd.toFixed(1)}s)`);
@@ -1044,18 +1607,23 @@ export class GameEngine {
       } else {
         const spec = buildBreathingAttackSpec(p.breathingStyle, idx, p.damageMult);
         p.energy -= cost;
-        p.formCooldowns[idx - 1] = BREATHING_STYLES[p.breathingStyle].forms[idx - 1].cooldown;
+        p.formCooldowns[idx - 1] = formDef.cooldown;
         p.currentAttack = spec;
         this.beginStateTransition(p, 'BREATHING_FORM', 0.06);
         p.stateTimer = 0;
         p.attackSwingId += 1;
         p.hitTargetsThisSwing.clear();
         p.secondHitFired = false;
-        p.invulnTimer = 0.22;
+        p.invulnTimer = 0.24;
         p.vx = p.facing * spec.forwardImpulse;
         if (spec.verticalImpulse) {
           p.vy = spec.verticalImpulse;
           p.grounded = false;
+        }
+        if (formDef.isSun13thCombo) {
+          this.sunComboTicksRemaining = 4;
+          this.sunComboTickTimer = 0.22;
+          this.sunComboIdx = 0;
         }
         this.sound.playBreathingStyle(p.breathingStyle, idx);
         this.particles.spawnBreathingEffect(
@@ -1070,11 +1638,11 @@ export class GameEngine {
         this.particles.spawnFloatingText(
           p.x,
           p.y - 115,
-          BREATHING_STYLES[p.breathingStyle].forms[idx - 1].name.split(':')[1]?.trim() ?? `Form ${idx}`,
-          BREATHING_STYLES[p.breathingStyle].primaryColor,
-          0.92
+          formDef.name.split(':')[1]?.trim() ?? formDef.name,
+          styleDef.primaryColor,
+          0.95
         );
-        this.shakeIntensity = Math.max(this.shakeIntensity, 5 + idx * 1.5);
+        this.shakeIntensity = Math.max(this.shakeIntensity, 5 + Math.min(idx, 5) * 1.4);
         return;
       }
     }
@@ -1090,7 +1658,11 @@ export class GameEngine {
       p.invulnTimer = DODGE_DURATION;
       p.currentAttack = null;
       this.sound.playDodge();
-      this.particles.spawnDust(p.x, p.y, 6, -moveDir);
+      if (p.grounded && this.isInWaterZone(p.x)) {
+        this.particles.spawnWaterSplash(p.x, p.y, 7);
+      } else {
+        this.particles.spawnDust(p.x, p.y, 6, -moveDir);
+      }
       if (this.mode === 'TUTORIAL' && this.tutorialStep === 7) {
         this.tutDodges += 1;
       }
@@ -1118,7 +1690,8 @@ export class GameEngine {
       p.hitTargetsThisSwing.clear();
       p.secondHitFired = false;
       p.vx = p.facing * BASE_ATTACK_SPECS.COUNTER.forwardImpulse;
-      this.sound.playSwordSlash(true);
+      this.sound.playSwordSlash(true, 4);
+      this.spawnFighterMeleeArc(p, BASE_ATTACK_SPECS.COUNTER);
       this.particles.spawnFloatingText(p.x, p.y - 110, 'COUNTER!', '#fde047', 1.1);
       return;
     }
@@ -1135,7 +1708,8 @@ export class GameEngine {
         p.hitTargetsThisSwing.clear();
         p.secondHitFired = false;
         p.vx = p.facing * BASE_ATTACK_SPECS.HEAVY.forwardImpulse;
-        this.sound.playSwordSlash(true);
+        this.sound.playSwordSlash(true, 2);
+        this.spawnFighterMeleeArc(p, BASE_ATTACK_SPECS.HEAVY);
         if (p.visual.weapon === 'shotgun_katana') {
           this.spawnShotgunPellets(p);
         }
@@ -1151,7 +1725,8 @@ export class GameEngine {
         p.attackSwingId += 1;
         p.hitTargetsThisSwing.clear();
         p.secondHitFired = false;
-        this.sound.playSwordSlash(false);
+        this.sound.playSwordSlash(false, 1);
+        this.spawnFighterMeleeArc(p, BASE_ATTACK_SPECS.JUMP);
       } else if (p.state === 'RUN' && Math.abs(p.vx) > PLAYER_WALK_SPEED * p.speedMult + 15) {
         p.currentAttack = BASE_ATTACK_SPECS.RUNNING_SLASH;
         this.beginStateTransition(p, 'RUNNING_ATTACK', 0.05);
@@ -1162,9 +1737,11 @@ export class GameEngine {
         p.vx = p.facing * BASE_ATTACK_SPECS.RUNNING_SLASH.forwardImpulse;
         p.comboStep = 1;
         p.comboResetTimer = 0.85;
-        this.sound.playSwordSlash(true);
+        this.sound.playSwordSlash(true, 0);
+        this.spawnFighterMeleeArc(p, BASE_ATTACK_SPECS.RUNNING_SLASH);
       } else {
-        const comboSpec = this.getComboSpec(p.comboStep);
+        const comboIdx = p.comboStep;
+        const comboSpec = this.getComboSpec(comboIdx);
         p.currentAttack = comboSpec;
         this.beginStateTransition(p, 'LIGHT_ATTACK', 0.05);
         p.stateTimer = 0;
@@ -1174,7 +1751,8 @@ export class GameEngine {
         p.vx = p.facing * comboSpec.forwardImpulse;
         p.comboStep = (p.comboStep + 1) % 5;
         p.comboResetTimer = 0.85;
-        this.sound.playSwordSlash(comboSpec.kind === 'DOUBLE_SLASH');
+        this.sound.playSwordSlash(comboSpec.kind === 'DOUBLE_SLASH', comboIdx);
+        this.spawnFighterMeleeArc(p, comboSpec);
       }
       return;
     }
@@ -1210,7 +1788,11 @@ export class GameEngine {
       p.jumpBufferTimer = 0;
       this.beginStateTransition(p, 'JUMP', 0.06);
       this.sound.playJump();
-      this.particles.spawnDust(p.x, p.y, 5, 0);
+      if (this.isInWaterZone(p.x)) {
+        this.particles.spawnWaterSplash(p.x, p.y, 6);
+      } else {
+        this.particles.spawnDust(p.x, p.y, 5, 0);
+      }
       if (this.mode === 'TUTORIAL' && this.tutorialStep === 4) {
         this.tutJumps += 1;
       }
@@ -1223,6 +1805,10 @@ export class GameEngine {
         if (this.footstepAccum >= 0.24) {
           this.footstepAccum = 0;
           this.sound.playFootstep();
+          if (this.isInWaterZone(p.x) && this.waterSplashTimer <= 0) {
+            this.waterSplashTimer = 0.16;
+            this.particles.spawnWaterSplash(p.x, p.y, 4);
+          }
         }
       } else if (Math.abs(p.vx) > 20) {
         this.beginStateTransition(p, 'WALK', 0.08);
@@ -1230,6 +1816,10 @@ export class GameEngine {
         if (this.footstepAccum >= 0.36) {
           this.footstepAccum = 0;
           this.sound.playFootstep();
+          if (this.isInWaterZone(p.x) && this.waterSplashTimer <= 0) {
+            this.waterSplashTimer = 0.22;
+            this.particles.spawnWaterSplash(p.x, p.y, 3);
+          }
         }
       } else {
         this.beginStateTransition(p, 'IDLE', 0.09);
@@ -1237,6 +1827,46 @@ export class GameEngine {
     } else {
       this.beginStateTransition(p, p.vy < 0 ? 'JUMP' : 'FALL', 0.08);
     }
+  }
+
+  private isInWaterZone(x: number): boolean {
+    for (const wz of this.waterZones) {
+      if (x >= wz.x && x <= wz.x + wz.w) return true;
+    }
+    return false;
+  }
+
+  private spawnFighterMeleeArc(f: Fighter, spec: AttackSpec): void {
+    const isSlayer = f.role === 'player' || f.role === 'ally';
+    const color = isSlayer
+      ? BREATHING_STYLES[f.breathingStyle].primaryColor
+      : f.demonArchetype
+        ? DEMON_TEMPLATES[f.demonArchetype].bdaColor
+        : '#fb7185';
+    const heavy = spec.triggersRagdoll || spec.kind === 'HEAVY' || spec.kind === 'COUNTER';
+    const tech = spec.technique;
+    let startA = -1.25;
+    let endA = 0.72;
+    if (tech === 'diagonal_upward' || tech === 'counter_slash') {
+      startA = 0.95;
+      endA = -1.35;
+    } else if (tech === 'horizontal_slash' || tech === 'running_slash') {
+      startA = -0.58;
+      endA = 0.35;
+    } else if (tech === 'heavy_overhead' || tech === 'vertical_downward') {
+      startA = -1.85;
+      endA = 0.85;
+    }
+    this.particles.spawnMeleeArc(
+      f.x + f.facing * 12,
+      f.y - 54 * f.visual.scale,
+      f.facing,
+      startA,
+      endA,
+      Math.max(48, spec.range * 0.72),
+      color,
+      heavy
+    );
   }
 
   private showWarning(msg: string): void {
@@ -1396,13 +2026,37 @@ export class GameEngine {
     f.jumpBufferTimer = Math.max(0, f.jumpBufferTimer - dt);
     f.displayHp += (f.hp - f.displayHp) * Math.min(1, dt * 8);
 
-    for (let i = 0; i < 5; i++) {
-      f.formCooldowns[i] = Math.max(0, f.formCooldowns[i] - dt);
+    f.formCooldowns = f.formCooldowns.map((cd) => Math.max(0, cd - dt));
+
+    f.awakeningCooldown = Math.max(0, f.awakeningCooldown - dt);
+    f.ultimateCooldown = Math.max(0, f.ultimateCooldown - dt);
+    f.redBladeBurnTimer = Math.max(0, f.redBladeBurnTimer - dt);
+    if (f.consecutiveHitTimer > 0) {
+      f.consecutiveHitTimer = Math.max(0, f.consecutiveHitTimer - dt);
+      if (f.consecutiveHitTimer <= 0) f.consecutiveHitsTaken = 0;
+    }
+
+    if (f.awakeningActive) {
+      f.awakeningTimer -= dt;
+      if (f.awakeningTimer <= 0) {
+        f.awakeningActive = false;
+        f.awakeningTimer = 0;
+        f.awakeningCooldown = 6;
+      } else if (f.awakeningTier === 'transcendent' && f.hp > 0) {
+        f.hp = Math.min(f.maxHp, f.hp + 2.5 * dt);
+        f.energy = Math.min(f.maxEnergy, f.energy + 6 * dt);
+      }
+    } else if (f.role === 'player') {
+      f.awakeningMeter = Math.min(100, f.awakeningMeter + dt * 2.2);
     }
 
     if (f.poisonTimer > 0 && f.hp > 0) {
       f.poisonTimer -= dt;
       f.hp = Math.max(1, f.hp - f.poisonDps * dt);
+    }
+
+    if (f.redBladeBurnTimer > 0 && f.hp > 0) {
+      f.hp = Math.max(1, f.hp - 4.2 * dt);
     }
 
     if (f.chillTimer > 0) {
@@ -1419,10 +2073,14 @@ export class GameEngine {
     }
 
     if (f.state === 'RAGDOLL' || f.state === 'DEFEATED') {
-      const res = stepRagdoll(f, dt, ARENA_LEFT, rightBound);
+      const res = stepRagdoll(f, dt, ARENA_LEFT, rightBound, this.platforms);
       if (res.impactedGround) {
         this.sound.playRagdollThump();
-        this.particles.spawnDust(f.x, GROUND_Y, 6, 0);
+        if (f.y >= GROUND_Y - 4 && this.isInWaterZone(f.x)) {
+          this.particles.spawnWaterSplash(f.x, GROUND_Y, 8);
+        } else {
+          this.particles.spawnDust(f.x, f.y, 6, 0);
+        }
       }
       if (res.readyToRecover && f.hp > 0) {
         f.recoveryStartPose = ragdollToJointPose(f);
@@ -1472,7 +2130,8 @@ export class GameEngine {
       if (spec && f.stateTimer >= spec.startup) {
         this.beginStateTransition(f, spec.triggersRagdoll ? 'HEAVY_ATTACK' : 'LIGHT_ATTACK', 0.05);
         f.vx = f.facing * spec.forwardImpulse;
-        this.sound.playSwordSlash(spec.triggersRagdoll);
+        this.sound.playSwordSlash(spec.triggersRagdoll, f.comboStep);
+        this.spawnFighterMeleeArc(f, spec);
       }
     } else if (isAttacking) {
       const spec = f.currentAttack;
@@ -1510,7 +2169,8 @@ export class GameEngine {
       if (f.stateTimer >= totalDur) {
         if (f.queuedNextCombo && f.role === 'player' && f.grounded) {
           f.queuedNextCombo = false;
-          const nextSpec = this.getComboSpec(f.comboStep);
+          const comboIdx = f.comboStep;
+          const nextSpec = this.getComboSpec(comboIdx);
           f.currentAttack = nextSpec;
           this.beginStateTransition(f, 'LIGHT_ATTACK', 0.04);
           f.stateTimer = 0;
@@ -1519,7 +2179,8 @@ export class GameEngine {
           f.secondHitFired = false;
           f.vx = f.facing * nextSpec.forwardImpulse;
           pComboAdvance(f);
-          this.sound.playSwordSlash(nextSpec.kind === 'DOUBLE_SLASH');
+          this.sound.playSwordSlash(nextSpec.kind === 'DOUBLE_SLASH', comboIdx);
+          this.spawnFighterMeleeArc(f, nextSpec);
         } else {
           f.queuedNextCombo = false;
           f.currentAttack = null;
@@ -1590,7 +2251,11 @@ export class GameEngine {
 
     if (f.y >= GROUND_Y) {
       if (!f.grounded && f.vy > 260) {
-        this.particles.spawnDust(f.x, GROUND_Y, 5, 0);
+        if (this.isInWaterZone(f.x)) {
+          this.particles.spawnWaterSplash(f.x, GROUND_Y, 8);
+        } else {
+          this.particles.spawnDust(f.x, GROUND_Y, 5, 0);
+        }
       }
       f.y = GROUND_Y;
       f.vy = 0;
@@ -1675,8 +2340,12 @@ export class GameEngine {
       if (foe.hp <= 0) continue;
       const clash = resolveSwordClash(this.player, foe, this.particles, this.sound);
       if (clash) {
-        this.hitstopTimer = Math.max(this.hitstopTimer, clash.hitstop);
-        this.shakeIntensity = Math.max(this.shakeIntensity, clash.shake);
+        if (this.gameplaySettings.cinematicEffects) {
+          this.hitstopTimer = Math.max(this.hitstopTimer, clash.hitstop);
+        }
+        if (this.gameplaySettings.cameraEffects) {
+          this.shakeIntensity = Math.max(this.shakeIntensity, clash.shake);
+        }
       }
     }
 
@@ -1689,8 +2358,12 @@ export class GameEngine {
       if (foe.hp <= 0) continue;
       const pHit = resolveAttackHit(this.player, foe, this.particles, this.sound);
       if (pHit.landed) {
-        this.hitstopTimer = Math.max(this.hitstopTimer, pHit.hitstop);
-        this.shakeIntensity = Math.max(this.shakeIntensity, pHit.shake);
+        if (this.gameplaySettings.cinematicEffects) {
+          this.hitstopTimer = Math.max(this.hitstopTimer, pHit.hitstop);
+        }
+        if (this.gameplaySettings.cameraEffects) {
+          this.shakeIntensity = Math.max(this.shakeIntensity, pHit.shake);
+        }
         if (pHit.ragdollTriggered) this.ragdollHitsLanded += 1;
         if (this.mode === 'TUTORIAL' && this.tutorialStep === 5) {
           this.tutSlashes += 1;
@@ -1704,7 +2377,7 @@ export class GameEngine {
       for (const foe of enemies) {
         if (foe.hp <= 0) continue;
         const aHit = resolveAttackHit(ally, foe, this.particles, this.sound);
-        if (aHit.landed) {
+        if (aHit.landed && this.gameplaySettings.cameraEffects) {
           this.shakeIntensity = Math.max(this.shakeIntensity, aHit.shake * 0.45);
         }
       }
@@ -1715,8 +2388,12 @@ export class GameEngine {
       if (foe.hp <= 0) continue;
       const dHit = resolveAttackHit(foe, this.player, this.particles, this.sound);
       if (dHit.landed || dHit.blocked) {
-        this.hitstopTimer = Math.max(this.hitstopTimer, dHit.hitstop);
-        this.shakeIntensity = Math.max(this.shakeIntensity, dHit.shake);
+        if (this.gameplaySettings.cinematicEffects) {
+          this.hitstopTimer = Math.max(this.hitstopTimer, dHit.hitstop);
+        }
+        if (this.gameplaySettings.cameraEffects) {
+          this.shakeIntensity = Math.max(this.shakeIntensity, dHit.shake);
+        }
         if (dHit.blocked && this.mode === 'TUTORIAL' && this.tutorialStep === 6) {
           this.tutBlocks += 1;
         }
@@ -1775,8 +2452,17 @@ export class GameEngine {
             continue;
           }
           const blocked = !isPlayerProj && t.state === 'BLOCK';
-          const dmg = blocked ? Math.max(2, Math.round(proj.damage * 0.2)) : proj.damage;
+          const defReduction = Math.min(
+            0.58,
+            t.role === 'demon' && t.demonArchetype
+              ? DEMON_TEMPLATES[t.demonArchetype].defense
+              : t.defenseReduction ?? (t.characterId === 'genya' ? 0.12 : 0)
+          );
+          const dmg = blocked
+            ? Math.max(2, Math.round(proj.damage * 0.2))
+            : Math.max(1, Math.round(proj.damage * (1 - defReduction)));
           t.hp = Math.max(0, t.hp - dmg);
+          t.damageTaken += dmg;
           t.hitFlashTimer = 0.14;
           if (blocked) {
             this.particles.spawnParrySparks(proj.x, proj.y, false);
@@ -1809,8 +2495,61 @@ export class GameEngine {
     }
   }
 
+  private advanceToNextSurvivalWave(): void {
+    this.survivalNextWavePending = false;
+    this.survivalWave += 1;
+    const nextSpawn = this.getSurvivalWaveSpawn(this.survivalWave);
+    const spawnX = Math.min(
+      this.worldWidth - 360,
+      Math.max(ARENA_LEFT + 360, this.player.x + (this.player.facing >= 0 ? 480 : -480))
+    );
+    this.spawnWaveFighters(nextSpawn, this.survivalWave, spawnX);
+    this.isCurrentBossBattle = Boolean(nextSpawn.isBoss);
+    this.cloneEnemy = null;
+    this.enemyAI.reset();
+    this.projectiles = [];
+    this.enemyEngaged = true;
+    if (this.survivalWave === 20) {
+      this.sound.setMusicContext('survival_boss', this.mapId, true, nextSpawn.archetype, this.activeCampaignCharId);
+      this.sound.playBossEntrance();
+      this.triggerDemonSpeech(this.enemy, 'engage');
+    } else if (nextSpawn.isBoss) {
+      this.sound.setMusicContext('survival_boss', this.mapId, true, nextSpawn.archetype, this.activeCampaignCharId);
+      this.sound.playBossEntrance();
+    } else {
+      this.sound.setMusicContext('survival', this.mapId, false, nextSpawn.archetype, this.activeCampaignCharId);
+      this.sound.playDemonRoar();
+    }
+    this.particles.spawnFloatingText(
+      this.player.x + 60,
+      this.player.y - 140,
+      `WAVE ${this.survivalWave} / 20 · ${nextSpawn.name.toUpperCase()}`,
+      '#fbbf24',
+      1.3
+    );
+    this.emitHudSnapshot();
+  }
+
+  private finalizeMatchVictory(): void {
+    this.phase = 'VICTORY';
+    const hpPct = this.player.hp / this.player.maxHp;
+    const rank: 'S' | 'A' | 'B' = hpPct >= 0.72 ? 'S' : hpPct >= 0.4 ? 'A' : 'B';
+    const coinsEarned = this.finishingPendingCoins;
+    this.coinsEarnedThisRun = coinsEarned;
+    this.lastRank = rank;
+    this.clearHeldInputs();
+    this.sound.playVictory();
+    if (this.mode === 'STORY') {
+      this.callbacks.onLevelComplete?.(this.currentLevel.id, rank, coinsEarned, this.killsThisRun);
+    } else if (this.mode === 'SURVIVAL') {
+      this.callbacks.onSurvivalComplete?.(this.survivalWave, true, coinsEarned, this.survivalDefeatedCount);
+    } else {
+      this.callbacks.onLevelComplete?.(0, rank, coinsEarned, this.killsThisRun);
+    }
+    this.emitHudSnapshot();
+  }
+
   private checkWaveOrMatchOutcome(): void {
-    // Keep knocked-down partner visibly defeated cleanly while waiting on primary enemy
     if (this.partnerEnemy && this.partnerEnemy.hp <= 0 && !this.partnerEnemy.ragdoll.active) {
       activateRagdoll(this.partnerEnemy, evaluateFighterPose(this.partnerEnemy), this.player.facing * 240, -240, true);
     }
@@ -1821,7 +2560,33 @@ export class GameEngine {
     const waveCleared = this.enemy.hp <= 0 && (!this.partnerEnemy || this.partnerEnemy.hp <= 0);
 
     if (waveCleared) {
-      this.killsThisRun += this.partnerEnemy ? 2 : 1;
+      const defeatedNow = this.partnerEnemy ? 2 : 1;
+      this.killsThisRun += defeatedNow;
+
+      if (this.mode === 'SURVIVAL') {
+        this.survivalDefeatedCount += defeatedNow;
+        if (this.survivalWave < this.survivalMaxWaves) {
+          const waveBonus = 15 + this.survivalWave * 4 + (this.survivalWave % 5 === 0 ? 35 : 0);
+          this.coinsEarnedThisRun += waveBonus;
+          this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.28));
+          this.player.energy = Math.min(this.player.maxEnergy, this.player.energy + 45);
+          this.survivalNextWavePending = true;
+          this.survivalCountdown = 2.2;
+          if (!this.enemy.ragdoll.active) {
+            activateRagdoll(this.enemy, evaluateFighterPose(this.enemy), this.player.facing * 290, -260, true);
+          }
+          this.particles.spawnFloatingText(
+            this.player.x,
+            this.player.y - 140,
+            `WAVE ${this.survivalWave} CLEARED! +${waveBonus} COINS`,
+            '#34d399',
+            1.25
+          );
+          this.emitHudSnapshot();
+          return;
+        }
+      }
+
       if (this.mode === 'STORY' && this.waveIndex + 1 < this.currentLevel.enemies.length) {
         this.waveIndex += 1;
         const nextSpawn = this.currentLevel.enemies[this.waveIndex];
@@ -1843,7 +2608,10 @@ export class GameEngine {
             nextSpawn.archetype,
             this.activeCampaignCharId
           );
-          if (this.enemyEngaged) this.sound.playBossEntrance();
+          if (this.enemyEngaged) {
+            this.sound.playBossEntrance();
+            this.triggerDemonSpeech(this.enemy, 'engage');
+          }
         } else if (this.enemyEngaged) {
           this.sound.playDemonRoar();
         }
@@ -1858,12 +2626,12 @@ export class GameEngine {
         return;
       }
 
-      this.phase = 'VICTORY';
+      // Enter Hybrid Cinematic Finishing Strike before Victory Screen
       this.enemy.currentAttack = null;
       this.partnerEnemy = null;
       this.cloneEnemy = null;
       if (!this.enemy.ragdoll.active) {
-        activateRagdoll(this.enemy, evaluateFighterPose(this.enemy), this.player.facing * 290, -260, true);
+        activateRagdoll(this.enemy, evaluateFighterPose(this.enemy), this.player.facing * 320, -290, true);
       } else {
         this.enemy.ragdoll.keepDown = true;
         this.enemy.state = 'DEFEATED';
@@ -1872,18 +2640,23 @@ export class GameEngine {
       const hpPct = this.player.hp / this.player.maxHp;
       const rank: 'S' | 'A' | 'B' = hpPct >= 0.72 ? 'S' : hpPct >= 0.4 ? 'A' : 'B';
       const rankBonus = rank === 'S' ? 25 : rank === 'A' ? 12 : 0;
-      const baseReward = this.mode === 'STORY' ? this.currentLevel.rewardCoins : 35;
-      const coinsEarned = baseReward + rankBonus + this.killsThisRun * 10;
+      const baseReward =
+        this.mode === 'STORY'
+          ? this.currentLevel.rewardCoins
+          : this.mode === 'SURVIVAL'
+            ? this.coinsEarnedThisRun + 140
+            : 35;
+      this.finishingPendingCoins =
+        this.mode === 'SURVIVAL' ? baseReward : baseReward + rankBonus + this.killsThisRun * 10;
+      this.finishingPendingRank = rank;
 
-      this.coinsEarnedThisRun = coinsEarned;
-      this.lastRank = rank;
+      this.finishingTimer = 0;
+      this.finishingTitle = `FINAL EXECUTION · ${this.enemy.name.split('·')[0].trim().toUpperCase()}`;
+      this.phase = 'FINISHING';
       this.clearHeldInputs();
-      this.sound.playVictory();
-      if (this.mode === 'STORY') {
-        this.callbacks.onLevelComplete?.(this.currentLevel.id, rank, coinsEarned, this.killsThisRun);
-      } else {
-        this.callbacks.onLevelComplete?.(0, rank, coinsEarned, this.killsThisRun);
-      }
+      this.sound.playFinisherImpact();
+      this.particles.spawnFinisherAsh(this.enemy.x, this.enemy.y - 45);
+      this.shakeIntensity = Math.max(this.shakeIntensity, 16);
       this.emitHudSnapshot();
     } else if (this.player.hp <= 0) {
       this.phase = 'DEFEAT';
@@ -1896,6 +2669,14 @@ export class GameEngine {
       }
       this.clearHeldInputs();
       this.sound.playDefeat();
+      if (this.mode === 'SURVIVAL') {
+        this.callbacks.onSurvivalComplete?.(
+          this.survivalWave,
+          false,
+          this.coinsEarnedThisRun,
+          this.survivalDefeatedCount
+        );
+      }
       this.emitHudSnapshot();
     }
   }
@@ -1931,6 +2712,10 @@ export class GameEngine {
       targetZoom = Math.abs(this.player.vx) > 220 ? 0.93 : 0.98;
     }
 
+    if (!this.gameplaySettings.cameraEffects) {
+      targetZoom = 1.0;
+    }
+
     const baseScale = Math.max(0.54, Math.min(1.18, this.viewH / WORLD_HEIGHT)) * targetZoom;
     const halfViewWorld = Math.max(360, (this.viewW * 0.5) / baseScale);
     const clampedTarget = Math.max(
@@ -1950,14 +2735,22 @@ export class GameEngine {
 
     const baseScale = Math.max(0.54, Math.min(1.18, this.viewH / WORLD_HEIGHT));
     const scale = baseScale * this.cameraZoom;
-    const shakeX = this.shakeIntensity > 0 ? (Math.random() - 0.5) * 2 * this.shakeIntensity : 0;
-    const shakeY = this.shakeIntensity > 0 ? (Math.random() - 0.5) * 2 * this.shakeIntensity : 0;
+    const allowShake = this.gameplaySettings.cameraEffects && this.shakeIntensity > 0;
+    const shakeX = allowShake ? (Math.random() - 0.5) * 2 * this.shakeIntensity : 0;
+    const shakeY = allowShake ? (Math.random() - 0.5) * 2 * this.shakeIntensity : 0;
     const groundAnchorOffsetY = this.viewH * 0.83 - GROUND_Y * scale;
 
     ctx.save();
     ctx.translate(this.viewW * 0.5 + shakeX, groundAnchorOffsetY + shakeY);
     ctx.scale(scale, scale);
     ctx.translate(-this.cameraX, 0);
+
+    const isDomaFrost =
+      this.enemy.hp > 0 &&
+      (this.enemy.demonArchetype === 'boss_doma' || this.enemy.demonArchetype === 'doma_final');
+    const showWeakPoints =
+      this.player.awakeningActive &&
+      (this.player.awakeningTier === 'transparent_world' || this.player.awakeningTier === 'transcendent');
 
     this.arena.renderWorldBehindCharacters(
       ctx,
@@ -1967,7 +2760,9 @@ export class GameEngine {
       this.cameraX,
       this.worldWidth,
       this.waterZones,
-      this.decors
+      this.decors,
+      this.exploreCaches,
+      isDomaFrost
     );
 
     if (this.mode === 'TUTORIAL') {
@@ -1979,20 +2774,76 @@ export class GameEngine {
     }
 
     if (this.cloneEnemy) {
-      renderFighter(ctx, this.cloneEnemy, evaluateFighterPose(this.cloneEnemy));
+      renderFighter(ctx, this.cloneEnemy, evaluateFighterPose(this.cloneEnemy), { showWeakPointReticle: showWeakPoints });
     }
 
     if (this.partnerEnemy) {
-      renderFighter(ctx, this.partnerEnemy, evaluateFighterPose(this.partnerEnemy));
+      renderFighter(ctx, this.partnerEnemy, evaluateFighterPose(this.partnerEnemy), { showWeakPointReticle: showWeakPoints });
     }
 
-    renderFighter(ctx, this.enemy, evaluateFighterPose(this.enemy));
+    renderFighter(ctx, this.enemy, evaluateFighterPose(this.enemy), { showWeakPointReticle: showWeakPoints });
     renderFighter(ctx, this.player, evaluateFighterPose(this.player));
 
     this.particles.render(ctx, this.projectiles);
     this.arena.renderWorldForeground(ctx, this.mapId, this.cameraX, this.worldWidth);
 
+    if (this.activeSpeechBubble && this.gameplaySettings.dialogueEnabled) {
+      const anchor = this.activeSpeechBubble.target === 'player' ? this.player : this.enemy;
+      this.drawSpeechBubble(
+        ctx,
+        anchor.x,
+        anchor.y - 135 * anchor.visual.scale,
+        this.activeSpeechBubble.speaker,
+        this.activeSpeechBubble.text,
+        this.activeSpeechBubble.isDemon
+      );
+    }
+
     ctx.restore();
+
+    if (this.phase === 'FINISHING') {
+      const progress = Math.min(1, this.finishingTimer / this.finishingDuration);
+      ctx.fillStyle = `rgba(2, 6, 18, ${0.42 * (1 - progress * 0.4)})`;
+      ctx.fillRect(0, 0, this.viewW, this.viewH);
+      const barH = Math.round(this.viewH * 0.11);
+      ctx.fillStyle = '#02040a';
+      ctx.fillRect(0, 0, this.viewW, barH);
+      ctx.fillRect(0, this.viewH - barH, this.viewW, barH);
+    }
+
+    ctx.restore();
+  }
+
+  private drawSpeechBubble(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    speaker: string,
+    text: string,
+    isDemon: boolean
+  ): void {
+    ctx.save();
+    ctx.font = '600 13px "Inter", sans-serif';
+    const trimmed = text.length > 44 ? `${text.slice(0, 42)}…` : text;
+    const textW = ctx.measureText(trimmed).width;
+    const boxW = Math.max(125, Math.min(295, textW + 28));
+    const boxH = 44;
+    const bx = x - boxW * 0.5;
+    const by = y - boxH;
+    ctx.fillStyle = isDemon ? 'rgba(24, 9, 18, 0.92)' : 'rgba(9, 14, 28, 0.92)';
+    ctx.strokeStyle = isDemon ? '#fb7185' : '#38bdf8';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, boxW, boxH, 10);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = '700 10px "Cinzel", sans-serif';
+    ctx.fillStyle = isDemon ? '#fda4af' : '#7dd3fc';
+    ctx.textAlign = 'left';
+    ctx.fillText(speaker.toUpperCase(), bx + 11, by + 15);
+    ctx.font = '600 12px "Inter", sans-serif';
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillText(trimmed, bx + 11, by + 33);
     ctx.restore();
   }
 
@@ -2004,6 +2855,8 @@ export class GameEngine {
         ? `Advance East (${Math.max(1, Math.round((this.enemy.x - this.player.x) / 40))}m) → ${this.enemy.name.split('·')[0].trim()}`
         : null;
 
+    const styleDef = BREATHING_STYLES[this.player.breathingStyle];
+
     this.callbacks.onHudUpdate({
       phase: this.phase,
       mode: this.mode,
@@ -2011,9 +2864,11 @@ export class GameEngine {
       levelTitle:
         this.mode === 'TUTORIAL'
           ? 'Mt. Sagiri Boulder Trial'
-          : this.mode === 'PRACTICE'
-            ? `Free Battle · ${MAP_DISPLAY_NAMES[this.mapId]}`
-            : `Lv.${this.currentLevel.id} · ${this.currentLevel.title}`,
+          : this.mode === 'SURVIVAL'
+            ? `Survival Mode · Wave ${this.survivalWave}/20`
+            : this.mode === 'PRACTICE'
+              ? `Free Battle · ${MAP_DISPLAY_NAMES[this.mapId]}`
+              : `Lv.${this.currentLevel.id} · ${this.currentLevel.title}`,
       mapId: this.mapId,
       playerName: this.player.name,
       playerHp: this.player.hp,
@@ -2021,20 +2876,42 @@ export class GameEngine {
       playerEnergy: this.player.energy,
       playerMaxEnergy: this.player.maxEnergy,
       breathingStyle: this.player.breathingStyle,
-      breathingStyleName: BREATHING_STYLES[this.player.breathingStyle].name,
+      breathingStyleName: styleDef.name,
+      totalFormsForStyle: styleDef.forms.length,
       heavyCooldown: this.player.heavyCooldown,
       maxHeavyCooldown: this.player.maxHeavyCooldown,
-      formCooldowns: [...this.player.formCooldowns] as [number, number, number, number, number],
+      formCooldowns: [...this.player.formCooldowns],
       counterReady: this.player.counterWindowTimer > 0,
       actionWarning: this.actionWarning,
+
+      awakeningMeter: this.player.awakeningMeter,
+      awakeningActive: this.player.awakeningActive,
+      awakeningTimer: this.player.awakeningTimer,
+      awakeningTier: this.player.awakeningTier,
+      awakeningCooldown: this.player.awakeningCooldown,
+      equippedUltimate: this.player.equippedUltimate,
+      ultimateCooldown: this.player.ultimateCooldown,
+      maxUltimateCooldown: ULTIMATE_SPECS[this.player.equippedUltimate].cooldown,
+      finishingTitle: this.phase === 'FINISHING' ? this.finishingTitle : undefined,
+
+      survivalWave: this.mode === 'SURVIVAL' ? this.survivalWave : 0,
+      survivalMaxWaves: this.survivalMaxWaves,
+      survivalEnemiesLeft: (this.enemy.hp > 0 ? 1 : 0) + (this.partnerEnemy && this.partnerEnemy.hp > 0 ? 1 : 0),
+      survivalCountdown: this.mode === 'SURVIVAL' && this.survivalNextWavePending ? this.survivalCountdown : 0,
+      survivalCoinsEarned: this.mode === 'SURVIVAL' ? this.coinsEarnedThisRun : 0,
 
       enemyName: this.enemy.name,
       enemySubtitle: this.enemy.subtitle,
       enemyHp: this.enemy.hp,
       enemyMaxHp: this.enemy.maxHp,
       enemyState: this.enemy.state,
-      enemyWaveIndex: this.waveIndex + 1,
-      enemyWaveTotal: this.mode === 'STORY' ? this.currentLevel.enemies.length : 1,
+      enemyWaveIndex: this.mode === 'SURVIVAL' ? this.survivalWave : this.waveIndex + 1,
+      enemyWaveTotal:
+        this.mode === 'SURVIVAL'
+          ? this.survivalMaxWaves
+          : this.mode === 'STORY'
+            ? this.currentLevel.enemies.length
+            : 1,
       bossPhase: this.enemy.bossPhase,
       isBossBattle: this.isCurrentBossBattle,
       enemyTelegraph:

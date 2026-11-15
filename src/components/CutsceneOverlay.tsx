@@ -3,12 +3,15 @@ import { FastForward, Pause, Play } from 'lucide-react';
 import { SoundEngine } from '../game/audio';
 import { MAP_DISPLAY_NAMES } from '../game/campaign';
 import { CutsceneEngine } from '../game/cutsceneEngine';
-import { CutsceneDef } from '../game/types';
+import { CutsceneDef, GameplaySettings } from '../game/types';
 
 interface CutsceneOverlayProps {
   cutscene: CutsceneDef;
   sound: SoundEngine;
   subtitlesEnabled: boolean;
+  gameplay: GameplaySettings;
+  playerSkinId?: string;
+  equippedDemonSkins?: Record<string, string>;
   onComplete: () => void;
   onSkip: () => void;
 }
@@ -17,6 +20,9 @@ export function CutsceneOverlay({
   cutscene,
   sound,
   subtitlesEnabled,
+  gameplay,
+  playerSkinId,
+  equippedDemonSkins,
   onComplete,
   onSkip,
 }: CutsceneOverlayProps) {
@@ -36,7 +42,17 @@ export function CutsceneOverlay({
       cutscene,
       sound,
       subtitlesEnabled,
-      () => onCompleteRef.current()
+      () => onCompleteRef.current(),
+      {
+        dialogueEnabled: gameplay.dialogueEnabled,
+        cinematicEffects: gameplay.cinematicEffects,
+        cameraEffects: gameplay.cameraEffects,
+        bloodEffectsEnabled: gameplay.bloodEffectsEnabled,
+        combatVisualEffects: gameplay.combatVisualEffects,
+        performanceMode: gameplay.performanceMode,
+        playerSkinId,
+        equippedDemonSkins,
+      }
     );
     engineRef.current = engine;
     setPaused(false);
@@ -49,11 +65,15 @@ export function CutsceneOverlay({
       engine.destroy();
       engineRef.current = null;
     };
-  }, [cutscene, sound]);
+  }, [cutscene, sound, playerSkinId, equippedDemonSkins]);
 
   useEffect(() => {
     engineRef.current?.setSubtitlesEnabled(subtitlesEnabled);
   }, [subtitlesEnabled]);
+
+  useEffect(() => {
+    engineRef.current?.setDialogueEnabled(gameplay.dialogueEnabled);
+  }, [gameplay.dialogueEnabled]);
 
   const handleTogglePause = () => {
     if (!engineRef.current) return;

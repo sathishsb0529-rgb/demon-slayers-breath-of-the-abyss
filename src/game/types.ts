@@ -2,10 +2,11 @@ export type GamePhase =
   | 'TITLE_MENU'
   | 'PLAYING'
   | 'PAUSED'
+  | 'FINISHING'
   | 'VICTORY'
   | 'DEFEAT';
 
-export type GameMode = 'TUTORIAL' | 'STORY' | 'PRACTICE';
+export type GameMode = 'TUTORIAL' | 'STORY' | 'PRACTICE' | 'SURVIVAL';
 
 export type FighterRole = 'player' | 'ally' | 'demon' | 'rock';
 
@@ -23,7 +24,9 @@ export type BreathingStyleId =
   | 'love'
   | 'serpent'
   | 'stone'
-  | 'sun';
+  | 'sun'
+  | 'flower'
+  | 'moon';
 
 export type MapId =
   | 'bamboo_forest'
@@ -192,6 +195,8 @@ export type AttackKind =
   | 'BREATHING_3'
   | 'BREATHING_4'
   | 'BREATHING_5'
+  | 'BREATHING_FORM'
+  | 'ULTIMATE_ATTACK'
   | 'DEMON_CLAW'
   | 'DEMON_KICK'
   | 'DEMON_PUNCH_COMBO'
@@ -201,6 +206,22 @@ export type AttackKind =
   | 'DEMON_ULTIMATE'
   | 'MUZAN_TENTACLE_WHIP'
   | 'MUZAN_SHOCKWAVE';
+
+export type AwakeningTierId =
+  | 'mark'
+  | 'transparent_world'
+  | 'red_blade'
+  | 'selfless_state'
+  | 'transcendent';
+
+export type UltimateId =
+  | 'eternal_sun'
+  | 'crimson_dragon'
+  | 'solar_annihilation'
+  | 'transparent_counter'
+  | 'red_moon_execution'
+  | 'absolute_zero'
+  | 'final_judgment';
 
 export interface Vec2 {
   x: number;
@@ -215,7 +236,7 @@ export interface Rect {
 }
 
 export interface BreathingFormSpec {
-  index: 1 | 2 | 3 | 4 | 5;
+  index: number;
   name: string;
   energyCost: number;
   cooldown: number;
@@ -231,6 +252,8 @@ export interface BreathingFormSpec {
   knockbackY: number;
   triggersRagdoll: boolean;
   hitstop: number;
+  isUnknown?: boolean;
+  isSun13thCombo?: boolean;
   motionPattern:
     | 'forward_surge'
     | 'spin_wheel'
@@ -253,13 +276,7 @@ export interface BreathingStyleDef {
   bladeBaseColor: string;
   bladeEdgeColor: string;
   tsubaColor: string;
-  forms: [
-    BreathingFormSpec,
-    BreathingFormSpec,
-    BreathingFormSpec,
-    BreathingFormSpec,
-    BreathingFormSpec,
-  ];
+  forms: BreathingFormSpec[];
 }
 
 export interface SlayerCharacterDef {
@@ -308,7 +325,9 @@ export interface AttackSpec {
   verticalImpulse?: number;
   motionPattern?: BreathingFormSpec['motionPattern'];
   breathingStyle?: BreathingStyleId;
-  formIndex?: 1 | 2 | 3 | 4 | 5;
+  formIndex?: number;
+  ultimateId?: UltimateId;
+  isSun13thCombo?: boolean;
   poisonDps?: number;
   isDoubleHit?: boolean;
 }
@@ -415,6 +434,8 @@ export interface FighterVisualProfile {
   boarMask?: boolean;
   demonFleshArmor?: boolean;
   haoriPattern?: 'checkered' | 'triangles' | 'flame' | 'butterfly' | 'half_half' | 'stripes' | 'mist_clouds' | 'spider_web' | 'flames_akaza';
+  renderStyle?: 'anime' | 'stick_nodes';
+  skinId?: string;
 }
 
 export interface Fighter {
@@ -430,6 +451,7 @@ export interface Fighter {
   speedMult: number;
   attackSpeedMult: number;
   energyRegen: number;
+  defenseReduction?: number;
 
   x: number;
   y: number;
@@ -466,7 +488,7 @@ export interface Fighter {
 
   heavyCooldown: number;
   maxHeavyCooldown: number;
-  formCooldowns: [number, number, number, number, number];
+  formCooldowns: number[];
   dodgeCooldown: number;
   invulnTimer: number;
   counterWindowTimer: number;
@@ -477,6 +499,19 @@ export interface Fighter {
   chillTimer: number;
   regenTimer: number;
   bossPhase: 1 | 2 | 3;
+
+  // Demon Slayer Awakening & Ultimate Mechanics
+  awakeningMeter: number;
+  awakeningActive: boolean;
+  awakeningTimer: number;
+  awakeningCooldown: number;
+  awakeningTier: AwakeningTierId | null;
+  unlockedAwakenings: AwakeningTierId[];
+  equippedUltimate: UltimateId;
+  ultimateCooldown: number;
+  redBladeBurnTimer: number;
+  consecutiveHitsTaken: number;
+  consecutiveHitTimer: number;
 
   scarfPoints: Vec2[];
   ragdoll: RagdollBody;
@@ -555,6 +590,17 @@ export interface MapZone {
   startX: number;
   endX: number;
   biomeHint: 'forest' | 'village' | 'river' | 'bridge' | 'cave' | 'temple' | 'mountain' | 'battlefield' | 'castle_hall' | 'castle_chasm' | 'castle_stairs' | 'castle_throne';
+}
+
+export interface ArenaExploreCache {
+  id: string;
+  x: number;
+  y: number;
+  kind: 'coin_chest' | 'wisteria_cache' | 'spirit_shrine';
+  coins: number;
+  energy: number;
+  hp: number;
+  collected: boolean;
 }
 
 export interface BdaProjectile {
@@ -644,7 +690,9 @@ export interface InputState {
   lightPressed: boolean;
   heavyPressed: boolean;
   dodgePressed: boolean;
-  formPressed: 0 | 1 | 2 | 3 | 4 | 5;
+  formPressed: number;
+  awakeningPressed?: boolean;
+  ultimatePressed?: boolean;
 }
 
 export interface StoryEnemySpawn {
@@ -727,10 +775,43 @@ export interface AudioSettings {
   subtitlesEnabled: boolean;
 }
 
+export interface GameplaySettings {
+  bloodEffectsEnabled: boolean;
+  combatVisualEffects: boolean;
+  cinematicEffects: boolean;
+  dialogueEnabled: boolean;
+  cameraEffects: boolean;
+  performanceMode: boolean;
+}
+
+export type TouchControlId =
+  | 'moveLeft'
+  | 'moveRight'
+  | 'dodge'
+  | 'jump'
+  | 'block'
+  | 'heavy'
+  | 'light'
+  | 'breathing1'
+  | 'breathing2'
+  | 'breathing3'
+  | 'breathing4'
+  | 'awakening'
+  | 'ultimate';
+
+export interface TouchControlItemConfig {
+  xPct: number;
+  yPct: number;
+  scale: number;
+}
+
+export type TouchControlsLayout = Record<TouchControlId, TouchControlItemConfig>;
+
 export interface CharacterUpgrades {
-  vitality: number; // +10 Max HP per level (0..5)
-  blade: number;    // +6% Damage per level (0..5)
-  breathing: number; // +1.2 Energy Regen per level (0..5)
+  vitality: number;  // +22 Max HP per level (0..5)
+  blade: number;     // +9% Attack Power per level (0..5)
+  defense: number;   // +7% Damage Reduction per level (0..5)
+  breathing: number; // +1.4 Energy Regen/s & +4% Speed per level (0..5)
 }
 
 export interface CharacterProfile {
@@ -742,9 +823,20 @@ export interface CharacterProfile {
   tutorialCompleted: boolean;
   selectedBreathing: BreathingStyleId;
   selectedSkinId: string;
+  unlockedSkins: string[];
+  unlockedAwakenings: AwakeningTierId[];
+  unlockedUltimates: UltimateId[];
+  equippedUltimate: UltimateId;
   upgrades: CharacterUpgrades;
   totalDemonsDefeated: number;
   storyChoices: Record<string, string>;
+}
+
+export interface SurvivalStats {
+  highestWave: number;
+  totalWins: number;
+  bestCoinsRun: number;
+  runsCompleted: number;
 }
 
 export interface SaveData {
@@ -759,8 +851,13 @@ export interface SaveData {
   seenCutscenes: string[];
   skipSeenCutscenes: boolean;
   audio: AudioSettings;
+  gameplay: GameplaySettings;
+  controlsLayout: TouchControlsLayout;
   totalDemonsDefeated: number;
   characterProfiles: Record<string, CharacterProfile>;
+  unlockedDemonSkins: Record<string, string[]>;
+  equippedDemonSkins: Record<string, string>;
+  survivalStats: SurvivalStats;
 }
 
 export interface HudSnapshot {
@@ -778,9 +875,22 @@ export interface HudSnapshot {
   breathingStyleName: string;
   heavyCooldown: number;
   maxHeavyCooldown: number;
-  formCooldowns: [number, number, number, number, number];
+  formCooldowns: number[];
+  totalFormsForStyle: number;
   counterReady: boolean;
   actionWarning: string | null;
+
+  awakeningMeter: number;
+  awakeningActive: boolean;
+  awakeningTimer: number;
+  awakeningTier: AwakeningTierId | null;
+  awakeningCooldown: number;
+  equippedUltimate: UltimateId;
+  ultimateCooldown: number;
+  maxUltimateCooldown: number;
+  redBladeActive?: boolean;
+  transparentWorldActive?: boolean;
+  selflessActive?: boolean;
 
   enemyName: string;
   enemySubtitle: string;
@@ -805,6 +915,13 @@ export interface HudSnapshot {
   advancePrompt: string | null;
   playerWorldX: number;
   worldWidth: number;
+
+  survivalWave: number;
+  survivalMaxWaves: number;
+  survivalEnemiesLeft: number;
+  survivalCountdown: number;
+  survivalCoinsEarned: number;
+  finishingTitle?: string;
 
   tutorialStep: number;
   tutorialTitle: string;

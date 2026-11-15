@@ -1,26 +1,62 @@
-import { Coins, Pause, Swords, Volume2, VolumeX } from 'lucide-react';
-import { BREATHING_STYLES } from '../game/breathing';
+import { useEffect, useState } from 'react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Coins,
+  Flame,
+  Lock,
+  Pause,
+  Sparkles,
+  Swords,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
+import { AWAKENING_SPECS, BREATHING_STYLES, ULTIMATE_SPECS } from '../game/breathing';
 import { MAP_DISPLAY_NAMES } from '../game/campaign';
-import { FORM_ENERGY_COSTS } from '../game/constants';
+import { getFormEnergyCost } from '../game/constants';
 import { HudSnapshot } from '../game/types';
 
 interface GameHudProps {
   hud: HudSnapshot;
   onTogglePause: () => void;
   onToggleMute: () => void;
-  onTriggerForm: (formIndex: 1 | 2 | 3 | 4 | 5) => void;
+  onTriggerForm: (formIndex: number) => void;
+  onTriggerAwakening: () => void;
+  onTriggerUltimate: () => void;
 }
 
-export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: GameHudProps) {
+export function GameHud({
+  hud,
+  onTogglePause,
+  onToggleMute,
+  onTriggerForm,
+  onTriggerAwakening,
+  onTriggerUltimate,
+}: GameHudProps) {
+  const [formPage, setFormPage] = useState(0);
+
+  useEffect(() => {
+    setFormPage(0);
+  }, [hud.breathingStyle]);
+
   const playerPct = Math.max(0, Math.min(100, (hud.playerHp / hud.playerMaxHp) * 100));
   const enemyPct = Math.max(0, Math.min(100, (hud.enemyHp / hud.enemyMaxHp) * 100));
   const energyPct = Math.max(0, Math.min(100, (hud.playerEnergy / hud.playerMaxEnergy) * 100));
   const styleDef = BREATHING_STYLES[hud.breathingStyle];
+  const totalPages = Math.max(1, Math.ceil(styleDef.forms.length / 4));
+  const safePage = Math.min(formPage, totalPages - 1);
+  const pageForms = styleDef.forms.slice(safePage * 4, safePage * 4 + 4);
+
   const heavyReady = hud.heavyCooldown <= 0.05;
   const heavyFillPct =
     hud.maxHeavyCooldown > 0
       ? Math.max(0, Math.min(100, (1 - hud.heavyCooldown / hud.maxHeavyCooldown) * 100))
       : 100;
+
+  const awkReady = !hud.awakeningActive && hud.awakeningMeter >= 100 && hud.awakeningCooldown <= 0.1;
+  const awkTierName = hud.awakeningTier ? AWAKENING_SPECS[hud.awakeningTier].name : 'Slayer Focus';
+  const ultSpec = ULTIMATE_SPECS[hud.equippedUltimate];
+  const ultReady = hud.ultimateCooldown <= 0.05 && hud.playerEnergy >= ultSpec.energyCost;
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col px-3 pt-2 sm:px-5 sm:pt-3">
@@ -30,6 +66,11 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
           <div className="flex items-baseline justify-between gap-2">
             <span className="font-display truncate text-xs font-bold tracking-wider text-slate-100 sm:text-sm">
               {hud.playerName}
+              {hud.awakeningActive && (
+                <span className="ml-1.5 text-[10px] font-extrabold text-amber-300 uppercase">
+                  · {awkTierName}
+                </span>
+              )}
             </span>
             <span className="font-mono-num shrink-0 text-xs font-semibold text-sky-300">
               {Math.ceil(hud.playerHp)} / {hud.playerMaxHp}
@@ -46,7 +87,7 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
           {/* 0 - 100% Breathing Energy Meter */}
           <div className="flex items-center justify-between gap-2 text-[11px]">
             <span className="truncate font-semibold" style={{ color: styleDef.primaryColor }}>
-              {hud.breathingStyleName}
+              {hud.breathingStyleName} ({styleDef.forms.length} Forms)
             </span>
             <span className="font-mono-num shrink-0 font-bold text-slate-200">
               {Math.floor(hud.playerEnergy)}%
@@ -62,36 +103,104 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
             />
           </div>
 
-          {/* 5 Breathing Forms + Heavy 2.0s Cooldown Strip (Desktop / Quick Clickable) */}
-          <div className="pointer-events-auto mt-0.5 hidden items-center gap-1 sm:flex">
-            {([1, 2, 3, 4, 5] as const).map((idx) => {
-              const cost = FORM_ENERGY_COSTS[idx];
-              const cd = hud.formCooldowns[idx - 1];
-              const ready = hud.playerEnergy >= cost && cd <= 0.05;
+          {/* Paginated Breathing Forms + Awakening + Ultimate + Heavy CD Strip (Desktop) */}
+          <div className="pointer-events-auto mt-0.5 hidden flex-wrap items-center gap-1 sm:flex">
+            {totalPages > 1 && (
+              <div className="flex items-center rounded border border-slate-700 bg-slate-950/90 px-0.5">
+                <button
+                  type="button"
+                  aria-label="Previous breathing page"
+                  onClick={() => setFormPage((p) => (p - 1 + totalPages) % totalPages)}
+                  className="p-0.5 text-sky-300 hover:text-white"
+                >
+                  <ChevronLeft className="h-3 w-3" />
+                </button>
+                <span className="font-mono-num px-1 text-[9px] font-bold text-slate-300">
+                  {safePage + 1}/{totalPages}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Next breathing page"
+                  onClick={() => setFormPage((p) => (p + 1) % totalPages)}
+                  className="p-0.5 text-sky-300 hover:text-white"
+                >
+                  <ChevronRight className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+
+            {pageForms.map((form) => {
+              const cost = getFormEnergyCost(form.index, styleDef.forms.length);
+              const cd = hud.formCooldowns[form.index - 1] ?? 0;
+              const ready = !form.isUnknown && hud.playerEnergy >= cost && cd <= 0.05;
               return (
                 <button
-                  key={idx}
+                  key={form.index}
                   type="button"
-                  onClick={() => onTriggerForm(idx)}
-                  title={`${styleDef.forms[idx - 1].name} (${cost}% Energy)`}
+                  onClick={() => onTriggerForm(form.index)}
+                  title={form.isUnknown ? `${form.name} (Canon form unknown)` : `${form.name} (${cost}% Energy)`}
                   className={`font-mono-num flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold transition-colors ${
-                    ready
-                      ? 'border-slate-600 bg-slate-900/90 text-slate-100 hover:border-sky-400'
-                      : 'border-slate-800 bg-slate-950/80 text-slate-500'
+                    form.isUnknown
+                      ? 'border-slate-800 bg-slate-950/60 text-slate-600'
+                      : ready
+                        ? 'border-slate-600 bg-slate-900/90 text-slate-100 hover:border-sky-400'
+                        : 'border-slate-800 bg-slate-950/80 text-slate-500'
                   }`}
                 >
-                  <span>{idx}</span>
-                  <span className="text-[9px] opacity-75">
-                    {cd > 0.05 ? `${cd.toFixed(0)}s` : `${cost}%`}
-                  </span>
+                  <span>{form.index}</span>
+                  {form.isUnknown ? (
+                    <Lock className="h-2.5 w-2.5" />
+                  ) : (
+                    <span className="text-[9px] opacity-75">
+                      {cd > 0.05 ? `${cd.toFixed(0)}s` : `${cost}%`}
+                    </span>
+                  )}
                 </button>
               );
             })}
 
-            {/* Heavy Attack 2.0s Cooldown Readout */}
+            {/* Awakening Quick Button */}
+            <button
+              type="button"
+              onClick={onTriggerAwakening}
+              title={`[Q] ${awkTierName} (${Math.floor(hud.awakeningMeter)}%)`}
+              className={`font-mono-num flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold transition-colors ${
+                hud.awakeningActive
+                  ? 'border-amber-400 bg-amber-950/90 text-amber-200 animate-pulse'
+                  : awkReady
+                    ? 'border-amber-400 bg-amber-900/80 text-white hover:bg-amber-800'
+                    : 'border-slate-800 bg-slate-950/80 text-slate-400'
+              }`}
+            >
+              <Sparkles className="h-3 w-3 text-amber-300" />
+              <span>
+                {hud.awakeningActive
+                  ? `${hud.awakeningTimer.toFixed(0)}s`
+                  : `${Math.floor(hud.awakeningMeter)}%`}
+              </span>
+            </button>
+
+            {/* Ultimate Quick Button */}
+            <button
+              type="button"
+              onClick={onTriggerUltimate}
+              title={`[U] ${ultSpec.name} (${ultSpec.energyCost}% Energy)`}
+              className={`font-mono-num flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold transition-colors ${
+                ultReady
+                  ? 'border-fuchsia-400 bg-fuchsia-950/85 text-fuchsia-100 hover:bg-fuchsia-900'
+                  : 'border-slate-800 bg-slate-950/80 text-slate-500'
+              }`}
+            >
+              <Flame className="h-3 w-3 text-fuchsia-300" />
+              <span>
+                {hud.ultimateCooldown > 0.05 ? `${hud.ultimateCooldown.toFixed(0)}s` : 'ULT'}
+              </span>
+            </button>
+
+            {/* Heavy Attack Cooldown */}
             <div
               title="Heavy Overhead Strike (Key K / X — 2.0s Cooldown)"
-              className={`font-mono-num relative ml-1 flex items-center gap-1 overflow-hidden rounded border px-1.5 py-0.5 text-[10px] font-bold ${
+              className={`font-mono-num relative flex items-center gap-1 overflow-hidden rounded border px-1.5 py-0.5 text-[10px] font-bold ${
                 heavyReady
                   ? 'border-rose-500/70 bg-rose-950/75 text-rose-200'
                   : 'border-slate-700 bg-slate-950/85 text-slate-400'
@@ -103,7 +212,7 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
               />
               <Swords className="relative h-3 w-3 text-rose-300" />
               <span className="relative">
-                {heavyReady ? 'Heavy Ready' : `Heavy ${hud.heavyCooldown.toFixed(1)}s`}
+                {heavyReady ? 'Heavy' : `${hud.heavyCooldown.toFixed(1)}s`}
               </span>
             </div>
 
@@ -112,7 +221,26 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
             )}
           </div>
 
-          {/* Level 50 AI Allies HP */}
+          {/* Mobile Compact Status */}
+          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] sm:hidden">
+            <span
+              className={`font-mono-num rounded border px-1.5 py-0.5 font-bold ${
+                heavyReady
+                  ? 'border-rose-500/60 bg-rose-950/70 text-rose-200'
+                  : 'border-slate-700 bg-slate-950/85 text-slate-400'
+              }`}
+            >
+              {heavyReady ? 'Heavy' : `Hvy ${hud.heavyCooldown.toFixed(1)}s`}
+            </span>
+            <span className="font-mono-num rounded border border-amber-500/50 bg-slate-950/80 px-1.5 py-0.5 font-bold text-amber-300">
+              {hud.awakeningActive ? `AWK ${hud.awakeningTimer.toFixed(0)}s` : `AWK ${Math.floor(hud.awakeningMeter)}%`}
+            </span>
+            {hud.counterReady && (
+              <span className="font-bold text-amber-300">Counter</span>
+            )}
+          </div>
+
+          {/* Allies HP */}
           {hud.allies.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-slate-300">
               {hud.allies.map((a) => (
@@ -124,7 +252,7 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
           )}
         </div>
 
-        {/* Center Level Info, Map Name, Coins, Pause & Mute */}
+        {/* Center Level / Survival Info, Coins, Pause & Mute */}
         <div className="pointer-events-auto flex shrink-0 flex-col items-center gap-1">
           <div className="flex items-center gap-1.5">
             <button
@@ -149,10 +277,12 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
             <span className="font-mono-num font-bold">{hud.coins}</span>
             <span className="hidden text-slate-600 sm:inline" aria-hidden="true">·</span>
             <span className="hidden text-[10px] font-medium text-slate-300 sm:inline">
-              {MAP_DISPLAY_NAMES[hud.mapId]}
+              {hud.mode === 'SURVIVAL'
+                ? `Survival Wave ${hud.survivalWave ?? 1}/${hud.survivalMaxWaves ?? 20}`
+                : MAP_DISPLAY_NAMES[hud.mapId]}
             </span>
           </div>
-          {hud.zoneTotal > 1 && (
+          {hud.zoneTotal > 1 && hud.mode !== 'SURVIVAL' && (
             <div className="hidden flex-col items-center gap-0.5 sm:flex">
               <span className="text-[10px] font-semibold tracking-wide text-sky-300/90">
                 Zone {hud.zoneIndex}/{hud.zoneTotal} · {hud.zoneName}
@@ -233,7 +363,6 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
                 )}
               </div>
 
-              {/* Dual / Partner Boss Bar (e.g., Daki fighting alongside Gyutaro) */}
               {(() => {
                 const pMax = hud.partnerEnemyMaxHp ?? 0;
                 const pHp = hud.partnerEnemyHp ?? 0;
@@ -263,6 +392,27 @@ export function GameHud({ hud, onTogglePause, onToggleMute, onTriggerForm }: Gam
           )}
         </div>
       </div>
+
+      {/* Survival Mode Next Wave Countdown */}
+      {hud.mode === 'SURVIVAL' && typeof hud.survivalCountdown === 'number' && hud.survivalCountdown > 0 && (
+        <div className="mx-auto mt-3 rounded-lg border border-amber-400/70 bg-slate-950/92 px-5 py-2 text-center shadow-2xl">
+          <p className="font-display text-sm font-extrabold tracking-widest text-amber-300">
+            WAVE {hud.survivalWave} CLEARED · NEXT WAVE IN {hud.survivalCountdown.toFixed(1)}s
+          </p>
+          <p className="font-mono-num text-xs text-emerald-300">
+            Vitality +28% · Energy +45% · Survival Coins Earned: +{hud.survivalCoinsEarned ?? 0}
+          </p>
+        </div>
+      )}
+
+      {/* Hybrid Finishing Execution Banner */}
+      {hud.phase === 'FINISHING' && hud.finishingTitle && (
+        <div className="mx-auto mt-10 rounded-lg border border-rose-400/80 bg-slate-950/92 px-6 py-2.5 text-center shadow-2xl">
+          <p className="font-display text-base font-extrabold tracking-widest text-rose-300 sm:text-xl">
+            {hud.finishingTitle}
+          </p>
+        </div>
+      )}
 
       {/* Zone Traversal Guidance Banner */}
       {hud.advancePrompt && hud.mode === 'STORY' && (

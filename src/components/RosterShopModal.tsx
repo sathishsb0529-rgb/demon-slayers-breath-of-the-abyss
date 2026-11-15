@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ArrowUpCircle, Check, Coins, Lock, Palette, ShieldCheck, X } from 'lucide-react';
+import { ArrowLeft, ArrowUpCircle, Check, Coins, Lock, Palette, ShieldCheck } from 'lucide-react';
 import { BREATHING_STYLES } from '../game/breathing';
 import { getCharacterById, getCharacterSkins, SLAYER_CHARACTERS } from '../game/characters';
-import { getCharacterProfile, getUpgradeCost } from '../game/save';
+import { getFormEnergyCost } from '../game/constants';
+import { getCharacterProfile, getUpgradeCost, UPGRADE_STAT_META } from '../game/save';
 import { BreathingStyleId, CharacterUpgrades, SaveData, SlayerCharacterDef } from '../game/types';
 
 interface RosterShopModalProps {
@@ -12,6 +13,7 @@ interface RosterShopModalProps {
   onBuyCharacter: (charId: string) => { ok: boolean; message: string };
   onUpgradeStat: (charId: string, stat: keyof CharacterUpgrades) => { ok: boolean; message: string };
   onSelectSkin: (charId: string, skinId: string) => void;
+  onBuySkin: (charId: string, skinId: string) => { ok: boolean; message: string };
 }
 
 export function RosterShopModal({
@@ -21,9 +23,11 @@ export function RosterShopModal({
   onBuyCharacter,
   onUpgradeStat,
   onSelectSkin,
+  onBuySkin,
 }: RosterShopModalProps) {
   const [inspectId, setInspectId] = useState<string>(save.selectedCharacterId);
   const [confirmBuyId, setConfirmBuyId] = useState<string | null>(null);
+  const [confirmUpgradeStat, setConfirmUpgradeStat] = useState<keyof CharacterUpgrades | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const inspected: SlayerCharacterDef = getCharacterById(inspectId);
@@ -43,28 +47,28 @@ export function RosterShopModal({
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/85 p-3 sm:p-6">
       <div className="flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-700/90 bg-slate-900 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 sm:px-6">
-          <div>
-            <h2 className="font-display text-lg font-bold text-white sm:text-xl">
-              Slayer Roster & Shop
-            </h2>
-            <p className="text-xs text-slate-400">
-              Unlock series-inspired Demon Slayers and Hashira with earned Slayer Coins.
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5 text-sm font-bold text-amber-300">
-              <Coins className="h-4 w-4" />
-              <span className="font-mono-num">{save.coins} Coins</span>
-            </div>
+        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3.5 py-2.5 sm:px-6 sm:py-3">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close"
-              className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100 hover:border-sky-400 hover:text-white"
             >
-              <X className="h-5 w-5" />
+              <ArrowLeft className="h-4 w-4 text-sky-300" />
+              <span>Back</span>
             </button>
+            <div>
+              <h2 className="font-display text-base font-bold text-white sm:text-xl">
+                Slayer Roster & Shop
+              </h2>
+              <p className="text-xs text-slate-400">
+                Unlock series-inspired Demon Slayers and Hashira with earned Slayer Coins.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-sm font-bold text-amber-300">
+            <Coins className="h-4 w-4" />
+            <span className="font-mono-num">{save.coins} Coins</span>
           </div>
         </div>
 
@@ -201,17 +205,24 @@ export function RosterShopModal({
                     );
                   })}
                 </div>
-                <div className="mt-2.5 space-y-1 text-[11px] text-slate-400">
-                  {BREATHING_STYLES[
-                    isSelected ? save.selectedBreathing : inspected.defaultBreathing
-                  ].forms.map((f) => (
-                    <div key={f.index} className="flex justify-between gap-2">
-                      <span className="truncate">{f.name}</span>
-                      <span className="font-mono-num shrink-0 text-sky-300">
-                        {f.energyCost}%
-                      </span>
-                    </div>
-                  ))}
+                <div className="mt-2.5 max-h-40 space-y-1 overflow-y-auto pr-1 text-[11px] text-slate-400">
+                  {(() => {
+                    const styleObj = BREATHING_STYLES[
+                      isSelected ? save.selectedBreathing : inspected.defaultBreathing
+                    ];
+                    return styleObj.forms.map((f) => (
+                      <div key={f.index} className="flex justify-between gap-2">
+                        <span className={`truncate ${f.isUnknown ? 'text-slate-600' : ''}`}>
+                          {f.name}
+                        </span>
+                        <span className="font-mono-num shrink-0 text-sky-300">
+                          {f.isUnknown
+                            ? 'Unknown'
+                            : `${getFormEnergyCost(f.index, styleObj.forms.length)}%`}
+                        </span>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
 
@@ -222,15 +233,9 @@ export function RosterShopModal({
                     <p className="text-xs font-bold tracking-wider text-slate-400 uppercase">
                       Slayer Training Upgrades (Coins: {inspectedProfile.coins})
                     </p>
-                    <div className="mt-2 grid grid-cols-3 gap-1.5">
-                      {(
-                        [
-                          { key: 'vitality', label: 'Vitality +22HP' },
-                          { key: 'blade', label: 'Blade +9% ATK' },
-                          { key: 'breathing', label: 'Breath +5% SPD' },
-                        ] as const
-                      ).map((u) => {
-                        const lv = inspectedProfile.upgrades[u.key];
+                    <div className="mt-2 grid grid-cols-2 gap-1.5">
+                      {UPGRADE_STAT_META.map((u) => {
+                        const lv = inspectedProfile.upgrades[u.key] ?? 0;
                         const cost = getUpgradeCost(lv);
                         const maxed = lv >= 5;
                         const canPay = !maxed && inspectedProfile.coins >= cost;
@@ -240,29 +245,65 @@ export function RosterShopModal({
                             type="button"
                             disabled={maxed || !canPay}
                             onClick={() => {
-                              const res = onUpgradeStat(inspected.id, u.key);
-                              setFeedback(res.message);
+                              setConfirmUpgradeStat(u.key);
+                              setFeedback(null);
                             }}
                             className={`flex flex-col items-start rounded-md border p-2 text-left text-[11px] transition-colors ${
                               maxed
                                 ? 'border-emerald-500/40 bg-emerald-950/25 text-emerald-300'
-                                : canPay
-                                  ? 'border-sky-500/40 bg-slate-950/75 text-slate-100 hover:border-sky-400'
-                                  : 'border-slate-800 bg-slate-950/40 text-slate-500'
+                                : confirmUpgradeStat === u.key
+                                  ? 'border-amber-400 bg-amber-950/30 text-white'
+                                  : canPay
+                                    ? 'border-sky-500/40 bg-slate-950/75 text-slate-100 hover:border-sky-400'
+                                    : 'border-slate-800 bg-slate-950/40 text-slate-500'
                             }`}
                           >
                             <span className="flex w-full items-center justify-between font-bold">
-                              <span>{u.label.split(' ')[0]}</span>
+                              <span>{u.label}</span>
                               <ArrowUpCircle className="h-3 w-3 text-sky-300" />
                             </span>
-                            <span className="text-[10px] opacity-80">{u.label.split(' ').slice(1).join(' ')}</span>
+                            <span className="text-[10px] opacity-80">{u.bonusPerLevelLabel}</span>
                             <span className="font-mono-num mt-1 text-[10px] font-bold text-amber-300">
-                              Lv.{lv}/5 · {maxed ? 'MAX' : `${cost}c`}
+                              Lv.{lv}/5 · {maxed ? 'MAX' : `Next Lv.${lv + 1} (${cost}c)`}
                             </span>
                           </button>
                         );
                       })}
                     </div>
+
+                    {confirmUpgradeStat && (() => {
+                      const uMeta = UPGRADE_STAT_META.find((m) => m.key === confirmUpgradeStat);
+                      const lv = inspectedProfile.upgrades[confirmUpgradeStat] ?? 0;
+                      const cost = getUpgradeCost(lv);
+                      if (!uMeta || lv >= 5) return null;
+                      return (
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/50 bg-amber-950/30 p-2 text-[11px]">
+                          <span className="text-amber-200">
+                            Spend {cost} Coins for {uMeta.label} Lv.{lv + 1}?
+                          </span>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const res = onUpgradeStat(inspected.id, confirmUpgradeStat);
+                                setFeedback(res.message);
+                                setConfirmUpgradeStat(null);
+                              }}
+                              className="rounded bg-amber-400 px-2.5 py-1 font-bold text-slate-950 hover:bg-amber-300"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmUpgradeStat(null)}
+                              className="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:bg-slate-800"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div>
@@ -272,26 +313,37 @@ export function RosterShopModal({
                     </p>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {skins.map((sk) => {
+                        const unlockedSkin = sk.price === 0 || inspectedProfile.unlockedSkins.includes(sk.id);
                         const activeSkin = inspectedProfile.selectedSkinId === sk.id;
                         return (
                           <button
                             key={sk.id}
                             type="button"
                             onClick={() => {
-                              onSelectSkin(inspected.id, sk.id);
-                              setFeedback(`Equipped ${sk.name}`);
+                              if (unlockedSkin) {
+                                onSelectSkin(inspected.id, sk.id);
+                                setFeedback(`Equipped ${sk.name}`);
+                              } else {
+                                const res = onBuySkin(inspected.id, sk.id);
+                                setFeedback(res.message);
+                              }
                             }}
                             className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
                               activeSkin
                                 ? 'border-sky-400 bg-sky-500/20 text-white'
-                                : 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-slate-500'
+                                : unlockedSkin
+                                  ? 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-slate-500'
+                                  : 'border-amber-500/40 bg-slate-950/50 text-amber-200 hover:border-amber-400'
                             }`}
                           >
                             <span
                               className="h-2.5 w-2.5 rounded-sm border border-white/20"
                               style={{ backgroundColor: sk.haoriPrimary }}
                             />
-                            <span>{sk.name}</span>
+                            <span>
+                              {sk.name}
+                              {!unlockedSkin ? ` (${sk.price}c)` : ''}
+                            </span>
                           </button>
                         );
                       })}

@@ -95,8 +95,8 @@ export const SLAYER_CHARACTERS: SlayerCharacterDef[] = [
     isHashira: false,
     difficulty: 'Hard',
     specialAbility: 'Vermilion Eye Counter Mastery',
-    defaultBreathing: 'mist',
-    allowedBreathings: ['mist', 'love', 'insect'],
+    defaultBreathing: 'flower',
+    allowedBreathings: ['flower', 'insect', 'mist'],
     weapon: 'katana',
     maxHp: 132,
     speedMult: 1.18,
@@ -292,7 +292,7 @@ export const SLAYER_CHARACTERS: SlayerCharacterDef[] = [
     difficulty: 'Hard',
     specialAbility: 'Obscuring Mist Blink',
     defaultBreathing: 'mist',
-    allowedBreathings: ['mist'],
+    allowedBreathings: ['mist', 'moon'],
     weapon: 'katana',
     maxHp: 156,
     speedMult: 1.26,
@@ -455,11 +455,16 @@ export const NEZUKO_ALLY_DEF: SlayerCharacterDef = {
 export interface CharacterSkinPreset {
   id: string;
   name: string;
+  price: number;
+  description: string;
   haoriPrimary?: string;
   haoriAccent?: string;
   uniformColor?: string;
   scarfColor?: string;
   bladeColor?: string;
+  hasMarkings?: boolean;
+  markingColor?: string;
+  renderStyle?: 'anime' | 'stick_nodes';
 }
 
 export function getCharacterSkins(charId: string): CharacterSkinPreset[] {
@@ -468,29 +473,169 @@ export function getCharacterSkins(charId: string): CharacterSkinPreset[] {
     {
       id: 'classic',
       name: 'Classic Corps Haori',
+      price: 0,
+      description: 'Signature Demon Slayer Corps uniform and Nichirin blade palette.',
       haoriPrimary: base.haoriPrimary,
       haoriAccent: base.haoriAccent,
       uniformColor: base.uniformColor,
       scarfColor: base.scarfColor,
       bladeColor: base.bladeColor,
+      renderStyle: 'anime',
     },
     {
       id: 'final_selection',
       name: 'Midnight Slayer Attire',
+      price: 140,
+      description: 'Deep obsidian night-raid haori accented with razor cyan trim.',
       haoriPrimary: '#1e293b',
       haoriAccent: '#38bdf8',
       uniformColor: '#090d16',
       scarfColor: '#38bdf8',
       bladeColor: '#38bdf8',
+      renderStyle: 'anime',
     },
     {
       id: 'crimson_mark',
       name: 'Awakened Demon-Slayer Mark',
+      price: 240,
+      description: 'Battle-worn scarlet regalia with Awakened forehead mark.',
       haoriPrimary: '#7f1d1d',
       haoriAccent: '#fbbf24',
       uniformColor: '#18181b',
       scarfColor: '#f43f5e',
       bladeColor: '#dc2626',
+      hasMarkings: true,
+      markingColor: '#ef4444',
+      renderStyle: 'anime',
+    },
+    {
+      id: 'abyssal_mastery',
+      name: 'Abyssal Breathing Regalia',
+      price: 340,
+      description: 'Imperial indigo-violet regalia worn by Infinite Castle veterans.',
+      haoriPrimary: '#312e81',
+      haoriAccent: '#c084fc',
+      uniformColor: '#090d16',
+      scarfColor: '#818cf8',
+      bladeColor: '#a855f7',
+      hasMarkings: true,
+      markingColor: '#a855f7',
+      renderStyle: 'anime',
+    },
+    {
+      id: 'stick_nodes_ink',
+      name: 'Stick Nodes Silhouette Form',
+      price: 260,
+      description: 'Bold high-contrast Stick Nodes fighter outline with luminous blade edge.',
+      haoriPrimary: '#0f172a',
+      haoriAccent: base.bladeColor,
+      uniformColor: '#020617',
+      scarfColor: base.haoriAccent,
+      bladeColor: '#f8fafc',
+      renderStyle: 'stick_nodes',
+    },
+  ];
+}
+
+export interface DemonSkinPreset {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  skinColor?: string;
+  haoriPrimary?: string;
+  haoriAccent?: string;
+  uniformColor?: string;
+  eyeColor?: string;
+  bladeColor?: string;
+  markingColor?: string;
+  renderStyle: 'anime' | 'stick_nodes';
+}
+
+export const FEATURED_DEMON_SKIN_TARGETS = [
+  'boss_kokushibo',
+  'boss_doma',
+  'boss_akaza',
+  'hantengu_base',
+  'zohakuten',
+  'gyutaro',
+  'boss_daki',
+  'boss_nakime',
+  'kaigaku',
+  'boss_enmu',
+  'boss_rui',
+  'boss_muzan',
+  'muzan_final',
+  'nezuko_base',
+] as const;
+
+export function getDemonSkins(demonArchetype: string): DemonSkinPreset[] {
+  const isIce = demonArchetype.includes('doma');
+  const isMoon = demonArchetype.includes('kokushibo') || demonArchetype.includes('kaigaku');
+  const accent = isIce ? '#38bdf8' : isMoon ? '#a855f7' : '#f43f5e';
+  return [
+    {
+      id: 'original',
+      name: 'Canon Original Form',
+      price: 0,
+      description: 'Canonical Blood Demon appearance and kimono colors.',
+      renderStyle: 'anime',
+    },
+    {
+      id: 'stick_nodes',
+      name: 'Stick Nodes Silhouette',
+      price: 160,
+      description: 'Crisp Stick Nodes articulated black silhouette with glowing demon eyes & marks.',
+      skinColor: '#090d16',
+      uniformColor: '#020617',
+      haoriPrimary: '#111827',
+      haoriAccent: accent,
+      eyeColor: accent,
+      bladeColor: accent,
+      markingColor: accent,
+      renderStyle: 'stick_nodes',
+    },
+    {
+      id: 'shadow_eclipse',
+      name: 'Shadow Eclipse Variant',
+      price: 210,
+      description: 'Midnight eclipse void palette with luminous amethyst Blood Demon markings.',
+      skinColor: '#cbd5e1',
+      uniformColor: '#0f0a1e',
+      haoriPrimary: '#1e1b4b',
+      haoriAccent: '#c084fc',
+      eyeColor: '#e879f9',
+      bladeColor: '#a855f7',
+      markingColor: '#a855f7',
+      renderStyle: 'anime',
+    },
+    {
+      id: 'crimson_frenzy',
+      name: 'Crimson Battle-Damaged',
+      price: 250,
+      description: 'Scorched blood-red aura form after surviving Sun Breathing.',
+      skinColor: '#e2e8f0',
+      uniformColor: '#2a080c',
+      haoriPrimary: '#7f1d1d',
+      haoriAccent: '#fb7185',
+      eyeColor: '#ef4444',
+      bladeColor: '#dc2626',
+      markingColor: '#ef4444',
+      renderStyle: 'anime',
+    },
+    {
+      id: 'abyssal_aura',
+      name: 'Abyssal Gold Sovereign',
+      price: 320,
+      description: 'Regal obsidian & molten gold variant with pure cosmetic prestige.',
+      skinColor: '#e5e7eb',
+      uniformColor: '#18181b',
+      haoriPrimary: '#292524',
+      haoriAccent: '#fbbf24',
+      eyeColor: '#fde047',
+      bladeColor: '#f59e0b',
+      markingColor: '#fbbf24',
+      renderStyle: 'anime',
     },
   ];
 }

@@ -14,7 +14,7 @@ const MAX_TRAIL_POINTS = 72;
 
 interface BreathingEffectArc {
   style: BreathingStyleId;
-  formIndex: 1 | 2 | 3 | 4 | 5;
+  formIndex: number;
   pattern: BreathingFormSpec['motionPattern'];
   x: number;
   y: number;
@@ -24,28 +24,67 @@ interface BreathingEffectArc {
   range: number;
 }
 
+interface MeleeSlashArc {
+  x: number;
+  y: number;
+  facing: 1 | -1;
+  startAngle: number;
+  endAngle: number;
+  radius: number;
+  color: string;
+  heavy: boolean;
+  life: number;
+  maxLife: number;
+}
+
 export class ParticleSystem {
   public particles: Particle[] = [];
   public trails: SlashTrailPoint[] = [];
   public floatingTexts: FloatingDamage[] = [];
   public breathingArcs: BreathingEffectArc[] = [];
+  public meleeArcs: MeleeSlashArc[] = [];
+  private bloodEffectsEnabled = false;
+  private combatVisualEffects = true;
+  private performanceMode = false;
+
+  public setVisualSettings(opts: {
+    bloodEffectsEnabled: boolean;
+    combatVisualEffects: boolean;
+    performanceMode: boolean;
+  }): void {
+    this.bloodEffectsEnabled = opts.bloodEffectsEnabled;
+    this.combatVisualEffects = opts.combatVisualEffects;
+    this.performanceMode = opts.performanceMode;
+    if (!this.bloodEffectsEnabled) {
+      this.particles = this.particles.filter((p) => p.kind !== 'blood');
+    }
+    if (!this.combatVisualEffects) {
+      this.trails.length = 0;
+      this.breathingArcs.length = 0;
+      this.meleeArcs.length = 0;
+    }
+  }
 
   public clear(): void {
     this.particles.length = 0;
     this.trails.length = 0;
     this.floatingTexts.length = 0;
     this.breathingArcs.length = 0;
+    this.meleeArcs.length = 0;
   }
 
   private pushParticle(p: Particle): void {
-    if (this.particles.length >= MAX_PARTICLES) {
+    const cap = this.performanceMode ? Math.floor(MAX_PARTICLES * 0.5) : MAX_PARTICLES;
+    if (this.particles.length >= cap) {
       this.particles.shift();
     }
     this.particles.push(p);
   }
 
   public addTrailPoint(point: SlashTrailPoint): void {
-    if (this.trails.length >= MAX_TRAIL_POINTS) {
+    if (!this.combatVisualEffects) return;
+    const cap = this.performanceMode ? Math.floor(MAX_TRAIL_POINTS * 0.5) : MAX_TRAIL_POINTS;
+    if (this.trails.length >= cap) {
       this.trails.shift();
     }
     this.trails.push(point);
@@ -53,27 +92,30 @@ export class ParticleSystem {
 
   public spawnBreathingEffect(
     styleId: BreathingStyleId,
-    formIndex: 1 | 2 | 3 | 4 | 5,
+    formIndex: number,
     pattern: BreathingFormSpec['motionPattern'],
     x: number,
     y: number,
     facing: 1 | -1,
     range: number
   ): void {
+    if (!this.combatVisualEffects) return;
     const style = BREATHING_STYLES[styleId];
+    const scaledIntensity = Math.min(6, Math.max(1, formIndex));
     this.breathingArcs.push({
       style: styleId,
-      formIndex,
+      formIndex: scaledIntensity,
       pattern,
       x,
       y: y - 50,
       facing,
-      life: 0.44 + formIndex * 0.05,
-      maxLife: 0.44 + formIndex * 0.05,
+      life: 0.44 + scaledIntensity * 0.045,
+      maxLife: 0.44 + scaledIntensity * 0.045,
       range,
     });
 
-    const count = 20 + formIndex * 7;
+    const rawCount = 20 + scaledIntensity * 6;
+    const count = this.performanceMode ? Math.max(8, Math.floor(rawCount * 0.45)) : rawCount;
     const kindMap: Record<BreathingStyleId, Particle['kind']> = {
       water: 'water',
       flame: 'flame',
@@ -87,6 +129,8 @@ export class ParticleSystem {
       serpent: 'poison',
       stone: 'stone',
       sun: 'flame',
+      flower: 'petal',
+      moon: 'spark',
     };
 
     const kind = kindMap[styleId];
@@ -107,7 +151,7 @@ export class ParticleSystem {
         maxLife: 0.75,
         color: i % 3 === 0 ? style.secondaryColor : style.primaryColor,
         glowColor: style.glowColor,
-        gravity: styleId === 'flame' || styleId === 'mist' || styleId === 'insect' ? -110 : 520,
+        gravity: styleId === 'flame' || styleId === 'mist' || styleId === 'insect' || styleId === 'flower' ? -95 : 520,
         drag: 0.94,
         kind,
         rotation: Math.random() * Math.PI * 2,
@@ -130,6 +174,110 @@ export class ParticleSystem {
       rotation: 0,
       vr: 0,
     });
+  }
+
+  public spawnAwakeningBurst(x: number, y: number, color: string): void {
+    const count = this.performanceMode ? 12 : 24;
+    for (let i = 0; i < count; i++) {
+      const ang = (i / count) * Math.PI * 2;
+      const spd = 120 + Math.random() * 220;
+      this.pushParticle({
+        x,
+        y: y - 48,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 60,
+        size: 4 + Math.random() * 4.5,
+        life: 0.45 + Math.random() * 0.25,
+        maxLife: 0.7,
+        color,
+        glowColor: '#ffffff',
+        gravity: -40,
+        drag: 0.93,
+        kind: 'spark',
+        rotation: ang,
+        vr: 6,
+      });
+    }
+    this.pushParticle({
+      x,
+      y: y - 48,
+      vx: 0,
+      vy: 0,
+      size: 24,
+      life: 0.42,
+      maxLife: 0.42,
+      color,
+      gravity: 0,
+      drag: 1,
+      kind: 'ring',
+      rotation: 0,
+      vr: 0,
+    });
+  }
+
+  public spawnUltimateBurst(x: number, y: number, primary: string, secondary: string): void {
+    const count = this.performanceMode ? 18 : 36;
+    for (let i = 0; i < count; i++) {
+      const ang = (i / count) * Math.PI * 2;
+      const spd = 180 + Math.random() * 340;
+      this.pushParticle({
+        x,
+        y: y - 50,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 80,
+        size: 5 + Math.random() * 6,
+        life: 0.55 + Math.random() * 0.3,
+        maxLife: 0.85,
+        color: i % 2 === 0 ? primary : secondary,
+        glowColor: primary,
+        gravity: -30,
+        drag: 0.94,
+        kind: i % 3 === 0 ? 'flame' : 'spark',
+        rotation: ang,
+        vr: 8,
+      });
+    }
+  }
+
+  public spawnFinisherAsh(x: number, y: number, color = '#94a3b8'): void {
+    const count = this.performanceMode ? 14 : 28;
+    for (let i = 0; i < count; i++) {
+      this.pushParticle({
+        x: x + (Math.random() - 0.5) * 44,
+        y: y - 20 - Math.random() * 70,
+        vx: (Math.random() - 0.5) * 90,
+        vy: -70 - Math.random() * 140,
+        size: 3 + Math.random() * 4.5,
+        life: 0.7 + Math.random() * 0.6,
+        maxLife: 1.3,
+        color: i % 3 === 0 ? '#fde047' : i % 2 === 0 ? color : '#475569',
+        gravity: -35,
+        drag: 0.97,
+        kind: 'dust',
+        rotation: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 4,
+      });
+    }
+    if (this.bloodEffectsEnabled) {
+      const bloodCount = this.performanceMode ? 6 : 14;
+      for (let i = 0; i < bloodCount; i++) {
+        this.pushParticle({
+          x,
+          y: y - 55,
+          vx: (Math.random() - 0.5) * 260,
+          vy: -140 - Math.random() * 220,
+          size: 3.5 + Math.random() * 4,
+          life: 0.45 + Math.random() * 0.35,
+          maxLife: 0.8,
+          color: '#dc2626',
+          gravity: 1100,
+          drag: 0.95,
+          kind: 'blood',
+          rotation: 0,
+          vr: 0,
+        });
+      }
+    }
   }
 
   public spawnRockShards(x: number, y: number, split: boolean): void {
@@ -185,7 +333,10 @@ export class ParticleSystem {
     heavy: boolean,
     isDemonBlood: boolean
   ): void {
-    const count = heavy ? 22 : 12;
+    if (!this.combatVisualEffects) return;
+    const allowBlood = isDemonBlood && this.bloodEffectsEnabled;
+    const rawCount = heavy ? 22 : 12;
+    const count = this.performanceMode ? Math.max(5, Math.floor(rawCount * 0.5)) : rawCount;
     for (let i = 0; i < count; i++) {
       const spread = (Math.random() - 0.5) * 1.8;
       const angle = (facing === 1 ? 0 : Math.PI) + spread;
@@ -198,16 +349,20 @@ export class ParticleSystem {
         size: (heavy ? 4.5 : 3) + Math.random() * 4,
         life: 0.24 + Math.random() * 0.24,
         maxLife: 0.48,
-        color: isDemonBlood
+        color: allowBlood
           ? i % 3 === 0
             ? '#f43f5e'
             : '#a855f7'
-          : i % 2 === 0
-            ? '#fb7185'
-            : '#fef08a',
+          : isDemonBlood
+            ? i % 2 === 0
+              ? '#38bdf8'
+              : '#a5f3fc'
+            : i % 2 === 0
+              ? '#fb7185'
+              : '#fef08a',
         gravity: 950,
         drag: 0.94,
-        kind: isDemonBlood ? 'blood' : 'spark',
+        kind: allowBlood ? 'blood' : 'spark',
         rotation: angle,
         vr: (Math.random() - 0.5) * 8,
       });
@@ -290,6 +445,56 @@ export class ParticleSystem {
     }
   }
 
+  public spawnMeleeArc(
+    x: number,
+    y: number,
+    facing: 1 | -1,
+    startAngle: number,
+    endAngle: number,
+    radius: number,
+    color: string,
+    heavy = false
+  ): void {
+    if (!this.combatVisualEffects) return;
+    const maxLife = heavy ? 0.24 : 0.16;
+    this.meleeArcs.push({
+      x,
+      y,
+      facing,
+      startAngle,
+      endAngle,
+      radius,
+      color,
+      heavy,
+      life: maxLife,
+      maxLife,
+    });
+  }
+
+  public spawnWaterSplash(x: number, y: number, count = 6): void {
+    if (!this.combatVisualEffects) return;
+    const capped = this.performanceMode ? Math.max(3, Math.floor(count * 0.5)) : count;
+    for (let i = 0; i < capped; i++) {
+      const spreadX = (Math.random() - 0.5) * 180;
+      const liftY = -85 - Math.random() * 140;
+      this.pushParticle({
+        x: x + (Math.random() - 0.5) * 20,
+        y: Math.min(GROUND_Y - 2, y),
+        vx: spreadX,
+        vy: liftY,
+        size: 2.5 + Math.random() * 3.5,
+        life: 0.25 + Math.random() * 0.22,
+        maxLife: 0.47,
+        color: i % 2 === 0 ? '#7dd3fc' : '#e0f2fe',
+        gravity: 680,
+        drag: 0.95,
+        kind: 'water',
+        rotation: 0,
+        vr: 0,
+      });
+    }
+  }
+
   public spawnFloatingText(x: number, y: number, text: string, color: string, scale = 1): void {
     this.floatingTexts.push({
       x,
@@ -346,6 +551,13 @@ export class ParticleSystem {
       }
     }
 
+    for (let i = this.meleeArcs.length - 1; i >= 0; i--) {
+      this.meleeArcs[i].life -= dt;
+      if (this.meleeArcs[i].life <= 0) {
+        this.meleeArcs.splice(i, 1);
+      }
+    }
+
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       const f = this.floatingTexts[i];
       f.life -= dt;
@@ -359,6 +571,7 @@ export class ParticleSystem {
 
   public render(ctx: CanvasRenderingContext2D, projectiles: BdaProjectile[]): void {
     this.renderSlashTrails(ctx);
+    this.renderMeleeArcs(ctx);
     this.renderBreathingArcs(ctx);
     this.renderProjectiles(ctx, projectiles);
 
@@ -466,6 +679,32 @@ export class ParticleSystem {
     ctx.restore();
   }
 
+  private renderMeleeArcs(ctx: CanvasRenderingContext2D): void {
+    for (const arc of this.meleeArcs) {
+      const t = 1 - arc.life / arc.maxLife;
+      const alpha = Math.max(0, 1 - t * t);
+      ctx.save();
+      ctx.translate(arc.x, arc.y);
+      ctx.scale(arc.facing, 1);
+      ctx.globalAlpha = alpha * 0.88;
+
+      ctx.beginPath();
+      ctx.arc(0, 0, arc.radius, arc.startAngle, arc.endAngle, arc.endAngle < arc.startAngle);
+      ctx.strokeStyle = arc.color;
+      ctx.lineWidth = (arc.heavy ? 12 : 7.5) * (1 - t * 0.45);
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, arc.radius * 0.95, arc.startAngle, arc.endAngle, arc.endAngle < arc.startAngle);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = (arc.heavy ? 3.8 : 2.2) * (1 - t * 0.5);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  }
+
   private renderBreathingArcs(ctx: CanvasRenderingContext2D): void {
     for (const arc of this.breathingArcs) {
       const t = 1 - arc.life / arc.maxLife;
@@ -500,6 +739,28 @@ export class ParticleSystem {
         ctx.lineTo(arc.range * 0.85, 36);
         ctx.moveTo(15, 36);
         ctx.lineTo(arc.range * 0.85, -42);
+        ctx.stroke();
+      } else if (arc.style === 'moon') {
+        // Luminous purple-indigo crescent moon wave + small chaos crescents
+        for (let m = 0; m < 2; m++) {
+          ctx.beginPath();
+          ctx.arc(arc.range * (0.35 + m * 0.32), (m - 0.5) * 16, 46 + m * 14, -1.05, 1.05);
+          ctx.strokeStyle = m === 0 ? style.primaryColor : style.secondaryColor;
+          ctx.lineWidth = (9 - m * 4) * (1 - t * 0.45);
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        }
+      } else if (arc.style === 'flower') {
+        // Graceful petal ribbon sweep
+        ctx.beginPath();
+        ctx.moveTo(-12, 10);
+        ctx.bezierCurveTo(arc.range * 0.35, -36, arc.range * 0.72, 24, arc.range, -8);
+        ctx.strokeStyle = style.primaryColor;
+        ctx.lineWidth = 8 * (1 - t * 0.4);
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.strokeStyle = style.secondaryColor;
+        ctx.lineWidth = 2.6;
         ctx.stroke();
       } else if (arc.style === 'serpent' || arc.style === 'love') {
         ctx.beginPath();

@@ -1,6 +1,6 @@
-import { AudioSettings, BreathingStyleId, DemonArchetype, DemonSfxTheme, MapId } from './types';
+import { AudioSettings, BreathingStyleId, DemonArchetype, DemonSfxTheme, MapId, UltimateId } from './types';
 
-export type MusicContextMode = 'menu' | 'char_select' | 'cutscene' | 'gameplay';
+export type MusicContextMode = 'menu' | 'char_select' | 'cutscene' | 'gameplay' | 'survival' | 'survival_boss';
 
 interface MapMusicSpec {
   bpm: number;
@@ -41,6 +41,8 @@ type ThemeKey =
   | 'boss_doma'
   | 'boss_kokushibo'
   | 'boss_gyutaro'
+  | 'survival'
+  | 'survival_boss'
   | 'final_boss';
 
 const MAP_MUSIC_THEMES: Record<ThemeKey, MapMusicSpec> = {
@@ -244,6 +246,28 @@ const MAP_MUSIC_THEMES: Record<ThemeKey, MapMusicSpec> = {
     taikoPulse: true,
     padChord: [0, 1, 4],
   },
+  survival: {
+    bpm: 138,
+    scale: [220, 261.63, 293.66, 329.63, 392.0, 440, 523.25, 587.33],
+    pattern: [0, 3, 4, 5, 6, 4, 3, 1, 0, 4, 5, 7, 6, 5, 3, 2],
+    kotoArp: [0, 2, 4, 6, 3, 5, 7, 4, 0, 2, 5, 7, 4, 3, 2, 1],
+    bassPattern: [0, 0, 3, 0, 4, 3, 2, 1, 0, 0, 4, 0, 5, 3, 2, 1],
+    leadWave: 'triangle',
+    subBassFreq: 110,
+    taikoPulse: true,
+    padChord: [0, 2, 4],
+  },
+  survival_boss: {
+    bpm: 162,
+    scale: [196.0, 207.65, 261.63, 293.66, 311.13, 392.0, 466.16, 523.25],
+    pattern: [0, 5, 6, 7, 5, 4, 3, 1, 0, 6, 7, 6, 5, 4, 2, 1],
+    kotoArp: [0, 3, 5, 7, 4, 6, 7, 5, 0, 4, 6, 7, 5, 3, 1, 0],
+    bassPattern: [0, 0, 4, 0, 5, 4, 2, 1, 0, 0, 5, 0, 6, 4, 3, 1],
+    leadWave: 'sawtooth',
+    subBassFreq: 98.0,
+    taikoPulse: true,
+    padChord: [0, 1, 4],
+  },
   final_boss: {
     bpm: 160,
     scale: [220, 233.08, 277.18, 329.63, 349.23, 440, 466.16, 554.37],
@@ -364,14 +388,16 @@ export class SoundEngine {
       target = 'char_select';
     } else if (mode === 'cutscene' || mapId === 'cutscene') {
       target = 'cutscene';
+    } else if (mode === 'survival' || mode === 'survival_boss') {
+      target = mode === 'survival_boss' || isBoss ? 'survival_boss' : 'survival';
     } else if (isBoss) {
       if (demonArchetype === 'boss_akaza' || demonArchetype === 'akaza_awakened') {
         target = 'boss_akaza';
-      } else if (demonArchetype === 'boss_doma') {
+      } else if (demonArchetype === 'boss_doma' || demonArchetype === 'doma_final') {
         target = 'boss_doma';
       } else if (demonArchetype === 'boss_kokushibo' || demonArchetype === 'kokushibo_demon') {
         target = 'boss_kokushibo';
-      } else if (demonArchetype === 'gyutaro' || demonArchetype === 'daki_awakened') {
+      } else if (demonArchetype === 'gyutaro' || demonArchetype === 'gyutaro_awakened' || demonArchetype === 'daki_awakened') {
         target = 'boss_gyutaro';
       } else if (
         demonArchetype === 'boss_muzan' ||
@@ -573,7 +599,7 @@ export class SoundEngine {
     return { ctx: this.ctx, out: this.sfxGain };
   }
 
-  public playSwordSlash(heavy = false): void {
+  public playSwordSlash(heavy = false, comboStep = 0): void {
     const ready = this.ensureSfxReady();
     if (!ready || !this.noiseBuffer) return;
     const { ctx, out } = ready;
@@ -582,10 +608,14 @@ export class SoundEngine {
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuffer;
 
+    const pitchFactor = 1 + (comboStep % 5) * 0.065;
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(heavy ? 880 : 1680, now);
-    filter.frequency.exponentialRampToValueAtTime(heavy ? 220 : 440, now + (heavy ? 0.24 : 0.14));
+    filter.frequency.setValueAtTime((heavy ? 880 : 1580) * pitchFactor, now);
+    filter.frequency.exponentialRampToValueAtTime(
+      (heavy ? 220 : 440) * pitchFactor,
+      now + (heavy ? 0.24 : 0.14)
+    );
     filter.Q.value = heavy ? 1.8 : 2.5;
 
     const gain = ctx.createGain();
@@ -598,6 +628,26 @@ export class SoundEngine {
     gain.connect(out);
     src.start(now);
     src.stop(now + (heavy ? 0.28 : 0.17));
+  }
+
+  public playUpgradeChime(): void {
+    const ready = this.ensureSfxReady();
+    if (!ready) return;
+    const { ctx, out } = ready;
+    const now = ctx.currentTime;
+    [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.055);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.001, now + i * 0.055);
+      gain.gain.linearRampToValueAtTime(0.14, now + i * 0.055 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.055 + 0.32);
+      osc.connect(gain);
+      gain.connect(out);
+      osc.start(now + i * 0.055);
+      osc.stop(now + i * 0.055 + 0.35);
+    });
   }
 
   public playShotgunBlast(): void {
@@ -703,12 +753,13 @@ export class SoundEngine {
     });
   }
 
-  public playBreathingStyle(style: BreathingStyleId, formIndex: 1 | 2 | 3 | 4 | 5): void {
+  public playBreathingStyle(style: BreathingStyleId, formIndex: number): void {
     const ready = this.ensureSfxReady();
     if (!ready || !this.noiseBuffer) return;
     const { ctx, out } = ready;
     const now = ctx.currentTime;
-    const dur = 0.42 + formIndex * 0.06;
+    const clampedIdx = Math.max(1, Math.min(16, formIndex));
+    const dur = 0.42 + Math.min(8, clampedIdx) * 0.045;
 
     const nSrc = ctx.createBufferSource();
     nSrc.buffer = this.noiseBuffer;
@@ -722,9 +773,13 @@ export class SoundEngine {
           ? 1800
           : style === 'stone'
             ? 200
-            : style === 'wind' || style === 'mist'
-              ? 1100
-              : 650;
+            : style === 'moon'
+              ? 480
+              : style === 'flower'
+                ? 880
+                : style === 'wind' || style === 'mist'
+                  ? 1100
+                  : 650;
     filter.frequency.setValueAtTime(baseFreq, now);
     filter.frequency.exponentialRampToValueAtTime(baseFreq * 2.6, now + 0.16);
     filter.frequency.exponentialRampToValueAtTime(Math.max(120, baseFreq * 0.7), now + dur);
@@ -741,7 +796,7 @@ export class SoundEngine {
     nSrc.stop(now + dur + 0.02);
 
     const osc = ctx.createOscillator();
-    osc.type = style === 'thunder' || style === 'sound' ? 'sawtooth' : 'sine';
+    osc.type = style === 'thunder' || style === 'sound' || style === 'moon' ? 'sawtooth' : 'sine';
     const pitch =
       style === 'thunder'
         ? 780
@@ -749,9 +804,13 @@ export class SoundEngine {
           ? 240
           : style === 'stone'
             ? 120
-            : style === 'wind'
-              ? 520 + formIndex * 55
-              : 440 + formIndex * 65;
+            : style === 'moon'
+              ? 360 + clampedIdx * 24
+              : style === 'flower'
+                ? 560 + clampedIdx * 36
+                : style === 'wind'
+                  ? 520 + clampedIdx * 32
+                  : 440 + clampedIdx * 34;
     osc.frequency.setValueAtTime(pitch, now);
     osc.frequency.exponentialRampToValueAtTime(pitch * (style === 'thunder' ? 0.35 : 1.4), now + dur * 0.85);
 
@@ -764,6 +823,112 @@ export class SoundEngine {
     oGain.connect(out);
     osc.start(now);
     osc.stop(now + dur + 0.02);
+  }
+
+  public playAwakening(): void {
+    const ready = this.ensureSfxReady();
+    if (!ready) return;
+    const { ctx, out } = ready;
+    const now = ctx.currentTime;
+    [220, 329.63, 440, 659.25].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = i === 0 ? 'sawtooth' : 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.035);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.18, now + 0.55);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.001, now + i * 0.035);
+      gain.gain.linearRampToValueAtTime(0.14, now + i * 0.035 + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+      osc.connect(gain);
+      gain.connect(out);
+      osc.start(now + i * 0.035);
+      osc.stop(now + 0.68);
+    });
+  }
+
+  public playUltimate(id: UltimateId): void {
+    const ready = this.ensureSfxReady();
+    if (!ready) return;
+    const { ctx, out } = ready;
+    const now = ctx.currentTime;
+    const root =
+      id === 'absolute_zero'
+        ? 523.25
+        : id === 'red_moon_execution'
+          ? 246.94
+          : id === 'transparent_counter'
+            ? 659.25
+            : 329.63;
+    [root * 0.5, root, root * 1.5, root * 2].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = i % 2 === 0 ? 'sawtooth' : 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.03);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.35, now + 0.72);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 2400;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.001, now + i * 0.03);
+      gain.gain.linearRampToValueAtTime(0.15, now + i * 0.03 + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.78);
+      osc.connect(lp);
+      lp.connect(gain);
+      gain.connect(out);
+      osc.start(now + i * 0.03);
+      osc.stop(now + 0.8);
+    });
+  }
+
+  public playFinisherImpact(): void {
+    const ready = this.ensureSfxReady();
+    if (!ready) return;
+    const { ctx, out } = ready;
+    const now = ctx.currentTime;
+    // Crisp execution cut followed by resonant echo
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(160, now);
+    sub.frequency.exponentialRampToValueAtTime(36, now + 0.62);
+    const subGain = ctx.createGain();
+    subGain.gain.setValueAtTime(0.32, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+    sub.connect(subGain);
+    subGain.connect(out);
+    sub.start(now);
+    sub.stop(now + 0.66);
+
+    [987.77, 1480, 1975.5].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.02);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.11 / (i + 1), now + i * 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc.connect(gain);
+      gain.connect(out);
+      osc.start(now + i * 0.02);
+      osc.stop(now + 0.58);
+    });
+  }
+
+  public playExplorePickup(): void {
+    const ready = this.ensureSfxReady();
+    if (!ready) return;
+    const { ctx, out } = ready;
+    const now = ctx.currentTime;
+    [587.33, 880, 1174.66].forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, now + idx * 0.055);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.001, now + idx * 0.055);
+      gain.gain.linearRampToValueAtTime(0.12, now + idx * 0.055 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.055 + 0.24);
+      osc.connect(gain);
+      gain.connect(out);
+      osc.start(now + idx * 0.055);
+      osc.stop(now + idx * 0.055 + 0.26);
+    });
   }
 
   public playBdaCast(): void {
