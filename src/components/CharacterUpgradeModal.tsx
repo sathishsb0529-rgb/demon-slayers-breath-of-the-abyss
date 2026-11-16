@@ -17,7 +17,7 @@ import {
   getCharacterSkins,
   SLAYER_CHARACTERS,
 } from '../game/characters';
-import { getCharacterProfile, getUpgradeCost, UPGRADE_STAT_META } from '../game/save';
+import { getCharacterProfile, getUpgradeCost, getXpForNextLevel, UPGRADE_STAT_META } from '../game/save';
 import {
   AwakeningTierId,
   CharacterUpgrades,
@@ -31,7 +31,6 @@ interface CharacterUpgradeModalProps {
   onUpgradeStat: (charId: string, stat: keyof CharacterUpgrades) => { ok: boolean; message: string };
   onSelectSkin: (charId: string, skinId: string) => void;
   onBuySkin: (charId: string, skinId: string) => { ok: boolean; message: string };
-  onBuyAwakening: (charId: string, tierId: AwakeningTierId) => { ok: boolean; message: string };
   onBuyUltimate: (charId: string, ultId: UltimateId) => { ok: boolean; message: string };
   onEquipUltimate: (charId: string, ultId: UltimateId) => void;
 }
@@ -44,7 +43,6 @@ export function CharacterUpgradeModal({
   onUpgradeStat,
   onSelectSkin,
   onBuySkin,
-  onBuyAwakening,
   onBuyUltimate,
   onEquipUltimate,
 }: CharacterUpgradeModalProps) {
@@ -52,7 +50,6 @@ export function CharacterUpgradeModal({
   const [tab, setTab] = useState<UpgradeTab>('stats');
   const [confirmStat, setConfirmStat] = useState<keyof CharacterUpgrades | null>(null);
   const [confirmSkin, setConfirmSkin] = useState<CharacterSkinPreset | null>(null);
-  const [confirmAwk, setConfirmAwk] = useState<AwakeningTierId | null>(null);
   const [confirmUlt, setConfirmUlt] = useState<UltimateId | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -81,7 +78,6 @@ export function CharacterUpgradeModal({
   const clearConfirms = () => {
     setConfirmStat(null);
     setConfirmSkin(null);
-    setConfirmAwk(null);
     setConfirmUlt(null);
   };
 
@@ -108,9 +104,14 @@ export function CharacterUpgradeModal({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-sm font-bold text-amber-300">
-            <Coins className="h-4 w-4" />
-            <span className="font-mono-num tabular-nums">{profile.coins} Coins</span>
+          <div className="flex items-center gap-3 text-sm font-bold">
+            <span className="font-mono-num rounded-md border border-sky-500/40 bg-sky-950/60 px-2.5 py-1 text-xs text-sky-200">
+              Slayer Lv.{profile.playerLevel}
+            </span>
+            <div className="flex items-center gap-1.5 text-amber-300">
+              <Coins className="h-4 w-4" />
+              <span className="font-mono-num tabular-nums">{profile.coins} Coins</span>
+            </div>
           </div>
         </div>
 
@@ -193,35 +194,53 @@ export function CharacterUpgradeModal({
             })}
           </div>
 
-          {/* Live Stat Readout */}
-          <div className="mt-3.5 grid grid-cols-2 gap-2.5 rounded-lg border border-slate-800 bg-slate-950/70 p-3 sm:grid-cols-5">
-            <div>
-              <p className="text-[11px] text-slate-400">Slayer</p>
-              <p className="font-display truncate text-sm font-bold text-white">{activeChar.name}</p>
+          {/* Live Stat & Level Progression Readout */}
+          <div className="mt-3.5 rounded-lg border border-slate-800 bg-slate-950/70 p-3">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+              <div>
+                <p className="text-[11px] text-slate-400">Slayer · Level</p>
+                <p className="font-display truncate text-sm font-bold text-white">
+                  {activeChar.name.split(' ')[0]} <span className="font-mono-num text-sky-300">Lv.{profile.playerLevel}</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400">Max Health</p>
+                <p className="font-mono-num tabular-nums text-sm font-bold text-emerald-300">
+                  {computedMaxHp} HP
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400">Attack Power</p>
+                <p className="font-mono-num tabular-nums text-sm font-bold text-rose-300">
+                  {computedAttackPct}%
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400">Defense Ward</p>
+                <p className="font-mono-num tabular-nums text-sm font-bold text-sky-300">
+                  {computedDefPct}% DMG Cut
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400">Breathing / Spd</p>
+                <p className="font-mono-num tabular-nums text-sm font-bold text-amber-300">
+                  {computedRegen}/s · {computedSpeedPct}%
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-[11px] text-slate-400">Max Health</p>
-              <p className="font-mono-num tabular-nums text-sm font-bold text-emerald-300">
-                {computedMaxHp} HP
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] text-slate-400">Attack Power</p>
-              <p className="font-mono-num tabular-nums text-sm font-bold text-rose-300">
-                {computedAttackPct}%
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] text-slate-400">Defense Ward</p>
-              <p className="font-mono-num tabular-nums text-sm font-bold text-sky-300">
-                {computedDefPct}% DMG Cut
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] text-slate-400">Breathing / Spd</p>
-              <p className="font-mono-num tabular-nums text-sm font-bold text-amber-300">
-                {computedRegen}/s · {computedSpeedPct}%
-              </p>
+            <div className="mt-2.5 flex items-center gap-3 border-t border-slate-800/80 pt-2 text-[11px]">
+              <span className="font-semibold text-sky-300">Experience</span>
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-900">
+                <div
+                  className="h-full bg-gradient-to-r from-sky-500 to-amber-300 transition-[width] duration-200"
+                  style={{
+                    width: `${Math.min(100, Math.max(4, Math.round((profile.playerXp / getXpForNextLevel(profile.playerLevel)) * 100)))}%`,
+                  }}
+                />
+              </div>
+              <span className="font-mono-num text-slate-300">
+                {profile.playerXp} / {getXpForNextLevel(profile.playerLevel)} XP
+              </span>
             </div>
           </div>
 
@@ -279,35 +298,6 @@ export function CharacterUpgradeModal({
                 <button
                   type="button"
                   onClick={() => setConfirmSkin(null)}
-                  className="min-h-[40px] rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {confirmAwk && (
-            <div className="mt-3.5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/60 bg-amber-950/35 px-4 py-3">
-              <span className="text-xs text-amber-100">
-                Unlock Awakening Tier <strong className="text-white">{AWAKENING_SPECS[confirmAwk].name}</strong> for{' '}
-                <strong className="font-mono-num text-amber-300">{AWAKENING_SPECS[confirmAwk].price} Coins</strong>?
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const res = onBuyAwakening(activeChar.id, confirmAwk);
-                    setFeedback(res.message);
-                    setConfirmAwk(null);
-                  }}
-                  className="min-h-[40px] rounded-md bg-amber-400 px-3.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-300"
-                >
-                  Confirm Unlock
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmAwk(null)}
                   className="min-h-[40px] rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
                 >
                   Cancel
@@ -436,22 +426,28 @@ export function CharacterUpgradeModal({
           {tab === 'awakenings' && (
             <div className="mt-4 space-y-5">
               <div>
-                <div className="flex items-center gap-2 text-xs font-bold tracking-wider text-amber-300 uppercase">
-                  <Sparkles className="h-4 w-4" />
-                  <span>5 Demon Slayer Awakening Tiers</span>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold tracking-wider text-amber-300 uppercase">
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    <span>5 Level-Gated Demon Slayer Awakenings</span>
+                  </span>
+                  <span className="text-[11px] font-semibold normal-case text-sky-300">
+                    Unlock automatically by leveling up in combat (No coins required)
+                  </span>
                 </div>
                 <div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {(Object.values(AWAKENING_SPECS) as Array<(typeof AWAKENING_SPECS)[AwakeningTierId]>).map(
                     (tier) => {
-                      const unlocked = profile.unlockedAwakenings.includes(tier.id);
-                      const canAfford = profile.coins >= tier.price;
+                      const unlocked =
+                        profile.playerLevel >= tier.requiredLevel ||
+                        profile.unlockedAwakenings.includes(tier.id);
                       return (
                         <div
                           key={tier.id}
                           className={`flex flex-col justify-between rounded-lg border p-3 ${
                             unlocked
                               ? 'border-amber-400/60 bg-amber-950/20'
-                              : 'border-slate-800 bg-slate-950/70'
+                              : 'border-slate-800 bg-slate-950/70 opacity-90'
                           }`}
                         >
                           <div>
@@ -467,8 +463,8 @@ export function CharacterUpgradeModal({
                             </p>
                           </div>
                           <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-800/80 pt-2">
-                            <span className="font-mono-num text-[11px] font-bold text-amber-300">
-                              {unlocked ? 'Mastered' : `${tier.price} Coins`}
+                            <span className="font-mono-num text-[11px] font-bold text-sky-300">
+                              {unlocked ? `Unlocked (Lv.${tier.requiredLevel}+)` : `Requires Lv.${tier.requiredLevel}`}
                             </span>
                             {unlocked ? (
                               <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-300">
@@ -476,23 +472,10 @@ export function CharacterUpgradeModal({
                                 Active in Combat
                               </span>
                             ) : (
-                              <button
-                                type="button"
-                                disabled={!canAfford}
-                                onClick={() => {
-                                  clearConfirms();
-                                  setConfirmAwk(tier.id);
-                                  setFeedback(null);
-                                }}
-                                className={`flex items-center gap-1 rounded px-3 py-1.5 text-[11px] font-bold ${
-                                  canAfford
-                                    ? 'bg-amber-400 text-slate-950 hover:bg-amber-300'
-                                    : 'cursor-not-allowed bg-slate-800 text-slate-500'
-                                }`}
-                              >
+                              <span className="flex items-center gap-1 rounded bg-slate-800/90 px-2.5 py-1 text-[11px] font-bold text-slate-400">
                                 <Lock className="h-3 w-3" />
-                                <span>{canAfford ? 'Unlock' : `Need ${tier.price - profile.coins}c`}</span>
-                              </button>
+                                <span>Lv.{profile.playerLevel}/{tier.requiredLevel}</span>
+                              </span>
                             )}
                           </div>
                         </div>

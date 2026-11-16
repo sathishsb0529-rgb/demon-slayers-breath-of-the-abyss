@@ -285,11 +285,24 @@ export class SoundEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
+  private bgmDuckGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
 
+  private bgmBuffer: AudioBuffer | null = null;
+  private growlBuffer: AudioBuffer | null = null;
+  private laughBuffer: AudioBuffer | null = null;
+  private bgmSource: AudioBufferSourceNode | null = null;
+  private audioPreloadStarted = false;
+  private bgmUseFallback = false;
+  private isAppHidden = false;
+  private growlCooldownUntil = 0;
+  private laughCooldownUntil = 0;
+
   private settings: AudioSettings = {
     muted: false,
+    musicEnabled: true,
+    sfxEnabled: true,
     masterVolume: 0.85,
     musicVolume: 0.65,
     sfxVolume: 0.85,
@@ -307,7 +320,11 @@ export class SoundEngine {
   }
 
   public applySettings(settings: AudioSettings): void {
-    this.settings = { ...settings };
+    this.settings = {
+      ...settings,
+      musicEnabled: settings.musicEnabled !== undefined ? Boolean(settings.musicEnabled) : true,
+      sfxEnabled: settings.sfxEnabled !== undefined ? Boolean(settings.sfxEnabled) : true,
+    };
     this.syncGainNodes();
   }
 
@@ -326,16 +343,38 @@ export class SoundEngine {
     return this.settings.muted;
   }
 
+  private getTargetContextDuckGain(): number {
+    if (this.currentThemeKey === 'cutscene') return 0.16;
+    if (this.currentThemeKey === 'menu') return 0.62;
+    if (this.currentThemeKey === 'char_select') return 0.68;
+    if (this.currentThemeKey === 'survival') return 0.88;
+    if (
+      this.currentThemeKey === 'survival_boss' ||
+      this.currentThemeKey === 'final_boss' ||
+      this.currentThemeKey.startsWith('boss_')
+    ) {
+      return 1.0;
+    }
+    return 0.86;
+  }
+
   private syncGainNodes(): void {
     if (!this.ctx || !this.masterGain || !this.musicGain || !this.sfxGain) return;
     const now = this.ctx.currentTime;
     const master = this.settings.muted ? 0 : Math.max(0, Math.min(1, this.settings.masterVolume));
-    const music = Math.max(0, Math.min(1, this.settings.musicVolume)) * 0.56;
-    const sfx = Math.max(0, Math.min(1, this.settings.sfxVolume));
+    const music = this.settings.musicEnabled
+      ? Math.max(0, Math.min(1, this.settings.musicVolume)) * 0.68
+      : 0;
+    const sfx = this.settings.sfxEnabled
+      ? Math.max(0, Math.min(1, this.settings.sfxVolume))
+      : 0;
 
     this.masterGain.gain.setTargetAtTime(master, now, 0.03);
-    this.musicGain.gain.setTargetAtTime(music, now, 0.05);
+    this.musicGain.gain.setTargetAtTime(music, now, 0.08);
     this.sfxGain.gain.setTargetAtTime(sfx, now, 0.03);
+    if (this.bgmDuckGain) {
+      this.bgmDuckGain.gain.setTargetAtTime(this.getTargetContextDuckGain(), now, 0.22);
+    }
   }
 
   public unlock(): void {
@@ -348,25 +387,111 @@ export class SoundEngine {
       this.ctx = new AudioCtx();
       this.masterGain = this.ctx.createGain();
       this.musicGain = this.ctx.createGain();
+      this.bgmDuckGain = this.ctx.createGain();
       this.sfxGain = this.ctx.createGain();
+      this.bgmDuckGain.connect(this.musicGain);
       this.musicGain.connect(this.masterGain);
       this.sfxGain.connect(this.masterGain);
       this.masterGain.connect(this.ctx.destination);
       this.noiseBuffer = this.createNoiseBuffer(this.ctx);
       this.syncGainNodes();
     }
-    if (this.ctx.state === 'suspended') {
-      void this.ctx.resume();
+    if (!this.isAppHidden && this.ctx.state === 'suspended') {
+      void this.ctx.resume().then(() => {
+        if (this.bgmBuffer && !this.bgmSource) {
+          this.ensureMp3BgmPlaying();
+        }
+      });
     }
-    if (this.musicIntervalId === null) {
+    if (!this.audioPreloadStarted) {
+      this.audioPreloadStarted = true;
+      void this.preloadUploadedAudioAssets();
+    }
+    if (this.bgmBuffer) {
+      this.ensureMp3BgmPlaying();
+    } else if (this.bgmUseFallback && this.musicIntervalId === null) {
       this.startMusicSequencer();
+    }
+  }
+
+  private async fetchAndDecode(url: string): Promise<AudioBuffer | null> {
+    if (!this.ctx) return null;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const arr = await resp.arrayBuffer();
+      return await this.ctx.decodeAudioData(arr);
+    } catch {
+      return null;
+    }
+  }
+
+  private async preloadUploadedAudioAssets(): Promise<void> {
+    if (!this.ctx) return;
+    const [bgm, growl, laugh] = await Promise.all([
+      this.fetchAndDecode('./assets/audio/bgm-theme.mp3'),
+      this.fetchAndDecode('./assets/audio/demon-growl.mp3'),
+      this.fetchAndDecode('./assets/audio/demon-laugh.mp3'),
+    ]);
+
+    if (growl) this.growlBuffer = growl;
+    if (laugh) this.laughBuffer = laugh;
+
+    if (bgm) {
+      this.bgmBuffer = bgm;
+      this.bgmUseFallback = false;
+      this.stopSequencerOnly();
+      this.ensureMp3BgmPlaying();
+    } else {
+      this.bgmUseFallback = true;
+      if (this.musicIntervalId === null) {
+        this.startMusicSequencer();
+      }
+    }
+  }
+
+  private ensureMp3BgmPlaying(): void {
+    if (!this.ctx || !this.bgmDuckGain || !this.bgmBuffer) return;
+    if (this.bgmSource) {
+      // Single-instance lock: never restart or stack duplicate BGM tracks
+      this.syncGainNodes();
+      return;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.bgmBuffer;
+    src.loop = true;
+    src.connect(this.bgmDuckGain);
+    src.onended = () => {
+      if (this.bgmSource === src) {
+        this.bgmSource = null;
+      }
+    };
+    this.bgmSource = src;
+    this.bgmDuckGain.gain.setValueAtTime(this.getTargetContextDuckGain(), this.ctx.currentTime);
+    src.start(0);
+    this.syncGainNodes();
+  }
+
+  public handleAppVisibilityChange(hidden: boolean): void {
+    this.isAppHidden = hidden;
+    if (!this.ctx) return;
+    if (hidden) {
+      if (this.ctx.state === 'running') {
+        void this.ctx.suspend();
+      }
+    } else if (this.ctx.state === 'suspended') {
+      void this.ctx.resume().then(() => {
+        if (this.bgmBuffer) {
+          this.ensureMp3BgmPlaying();
+        }
+      });
     }
   }
 
   public setBossPhaseIntensity(phase: 1 | 2 | 3): void {
     if (this.bossPhaseIntensity === phase) return;
     this.bossPhaseIntensity = phase;
-    if (this.ctx && this.musicIntervalId !== null) {
+    if (this.ctx && this.bgmUseFallback && !this.bgmBuffer && this.musicIntervalId !== null) {
       this.startMusicSequencer();
     }
   }
@@ -413,10 +538,20 @@ export class SoundEngine {
       target = mapId;
     }
 
-    if (this.currentThemeKey === target && this.musicIntervalId !== null) return;
+    const themeChanged = this.currentThemeKey !== target;
     this.currentThemeKey = target;
+
+    if (this.bgmBuffer) {
+      // Single-track continuous MP3 BGM: adjust gain/ducking smoothly without restarting
+      if (this.ctx) {
+        this.ensureMp3BgmPlaying();
+      }
+      return;
+    }
+
+    if (!themeChanged && this.musicIntervalId !== null) return;
     this.musicStep = 0;
-    if (this.ctx) {
+    if (this.ctx && this.bgmUseFallback) {
       this.startMusicSequencer();
     }
   }
@@ -427,22 +562,42 @@ export class SoundEngine {
     this.setMusicContext(mode, mapId, isBoss);
   }
 
-  public stopMusic(): void {
+  private stopSequencerOnly(): void {
     if (this.musicIntervalId !== null) {
       clearInterval(this.musicIntervalId);
       this.musicIntervalId = null;
     }
   }
 
+  public stopMusic(): void {
+    this.stopSequencerOnly();
+    if (this.bgmSource) {
+      try {
+        this.bgmSource.stop();
+      } catch {
+        // Already stopped
+      }
+      this.bgmSource = null;
+    }
+  }
+
   private startMusicSequencer(): void {
-    this.stopMusic();
+    this.stopSequencerOnly();
+    if (this.bgmBuffer) return;
     if (typeof window === 'undefined') return;
     const spec = MAP_MUSIC_THEMES[this.currentThemeKey] ?? MAP_MUSIC_THEMES.bamboo_forest;
     const phaseTempoMult = this.bossPhaseIntensity === 3 ? 1.16 : this.bossPhaseIntensity === 2 ? 1.08 : 1.0;
     const eighthMs = Math.max(95, Math.round((60 / (spec.bpm * phaseTempoMult) / 2) * 1000));
 
     this.musicIntervalId = setInterval(() => {
-      if (!this.ctx || !this.musicGain || this.ctx.state === 'suspended' || this.settings.muted) {
+      if (
+        !this.ctx ||
+        !this.musicGain ||
+        this.bgmBuffer ||
+        this.ctx.state === 'suspended' ||
+        this.settings.muted ||
+        !this.settings.musicEnabled
+      ) {
         return;
       }
       if (this.settings.musicVolume <= 0.01 || this.settings.masterVolume <= 0.01) return;
@@ -593,7 +748,7 @@ export class SoundEngine {
   }
 
   private ensureSfxReady(): { ctx: AudioContext; out: AudioNode } | null {
-    if (this.settings.muted || this.settings.sfxVolume <= 0.01) return null;
+    if (this.settings.muted || !this.settings.sfxEnabled || this.settings.sfxVolume <= 0.01) return null;
     if (!this.ctx) this.unlock();
     if (!this.ctx || !this.sfxGain || this.ctx.state === 'suspended') return null;
     return { ctx: this.ctx, out: this.sfxGain };
@@ -1049,10 +1204,26 @@ export class SoundEngine {
     });
   }
 
-  public playDemonRoar(): void {
+  public playDemonRoar(force = false): void {
     const ready = this.ensureSfxReady();
     if (!ready) return;
+    const nowPerf = performance.now();
+    if (!force && nowPerf < this.growlCooldownUntil) return;
+    this.growlCooldownUntil = nowPerf + 4600;
+
     const { ctx, out } = ready;
+    if (this.growlBuffer) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.growlBuffer;
+      src.playbackRate.value = 0.94 + Math.random() * 0.11;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.88, ctx.currentTime);
+      src.connect(gain);
+      gain.connect(out);
+      src.start(ctx.currentTime);
+      return;
+    }
+
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
@@ -1073,6 +1244,46 @@ export class SoundEngine {
     gain.connect(out);
     osc.start(now);
     osc.stop(now + 0.54);
+  }
+
+  public playDemonLaugh(force = false): void {
+    const ready = this.ensureSfxReady();
+    if (!ready) return;
+    const nowPerf = performance.now();
+    if (!force && nowPerf < this.laughCooldownUntil) return;
+    this.laughCooldownUntil = nowPerf + 6200;
+
+    const { ctx, out } = ready;
+    if (this.laughBuffer) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.laughBuffer;
+      src.playbackRate.value = 0.94 + Math.random() * 0.11;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.84, ctx.currentTime);
+      src.connect(gain);
+      gain.connect(out);
+      src.start(ctx.currentTime);
+      return;
+    }
+
+    const now = ctx.currentTime;
+    [195, 168, 145].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now + i * 0.12);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 620;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.01, now + i * 0.12);
+      gain.gain.linearRampToValueAtTime(0.14, now + i * 0.12 + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.14);
+      osc.connect(lp);
+      lp.connect(gain);
+      gain.connect(out);
+      osc.start(now + i * 0.12);
+      osc.stop(now + i * 0.12 + 0.16);
+    });
   }
 
   public playBossEntrance(): void {

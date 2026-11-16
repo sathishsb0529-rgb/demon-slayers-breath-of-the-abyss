@@ -28,3 +28,35 @@
   font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
 }
+
+@keyframes abyss-menu-pan {
+  0% {
+    transform: scale(1.03) translate3d(0%, 0%, 0);
+  }
+  50% {
+    transform: scale(1.1) translate3d(-1.2%, -0.8%, 0);
+  }
+  100% {
+    transform: scale(1.03) translate3d(0%, 0%, 0);
+  }
+}
+
+@keyframes abyss-logo-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.35)) drop-shadow(0 0 34px rgba(244, 63, 94, 0.28));
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 26px rgba(56, 189, 248, 0.58)) drop-shadow(0 0 46px rgba(244, 63, 94, 0.45));
+    transform: scale(1.02);
+  }
+}
+
+.animate-abyss-pan {
+  animation: abyss-menu-pan 26s ease-in-out infinite;
+}
+
+.animate-logo-glow {
+  animation: abyss-logo-glow 4.5s ease-in-out infinite;
+}

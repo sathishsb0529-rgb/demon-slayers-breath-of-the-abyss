@@ -1,7 +1,7 @@
 import { BREATHING_STYLES } from './breathing';
 import { GROUND_Y } from './constants';
 import { ragdollToJointPose } from './physics';
-import { Fighter, JointPose, Vec2, WeaponStyle } from './types';
+import { BreathingStyleId, Fighter, JointPose, Vec2, WeaponStyle } from './types';
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -806,22 +806,44 @@ export function renderFighter(
 
   const arch = fighter.demonArchetype;
   if (arch === 'boss_akaza' || arch === 'akaza_awakened') {
-    const compassR = (arch === 'akaza_awakened' ? 68 : 54) * v.scale;
+    const compassR = (arch === 'akaza_awakened' ? 76 : 62) * v.scale;
+    const isAwakenedAkaza = arch === 'akaza_awakened';
     ctx.save();
     ctx.translate(pose.pelvis.x, Math.min(GROUND_Y + 2, fighter.y + 2));
     ctx.scale(1, 0.34);
     ctx.rotate(fighter.animTime * 0.9);
-    ctx.strokeStyle = arch === 'akaza_awakened' ? 'rgba(56, 189, 248, 0.85)' : 'rgba(56, 189, 248, 0.65)';
-    ctx.lineWidth = 2.4;
+    // Outer Destructive Death geometric crest ring
+    ctx.strokeStyle = isAwakenedAkaza ? 'rgba(56, 189, 248, 0.92)' : 'rgba(56, 189, 248, 0.72)';
+    ctx.lineWidth = 2.6;
     ctx.beginPath();
     ctx.arc(0, 0, compassR, 0, Math.PI * 2);
     ctx.stroke();
-    for (let k = 0; k < 6; k++) {
-      const a = (k * Math.PI) / 3;
+    ctx.strokeStyle = 'rgba(244, 63, 94, 0.55)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, compassR * 0.52, 0, Math.PI * 2);
+    ctx.stroke();
+    // 12-point Snowflake Compass Rays (6 primary cyan crystal points + 6 alternating magenta needles)
+    for (let k = 0; k < 12; k++) {
+      const a = (k * Math.PI) / 6;
+      const isPrimary = k % 2 === 0;
+      const tipR = isPrimary ? compassR * 1.24 : compassR * 0.92;
+      ctx.strokeStyle = isPrimary ? 'rgba(56, 189, 248, 0.9)' : 'rgba(244, 114, 182, 0.68)';
+      ctx.lineWidth = isPrimary ? 2.4 : 1.5;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(a) * compassR * 1.15, Math.sin(a) * compassR * 1.15);
+      ctx.moveTo(Math.cos(a) * compassR * 0.22, Math.sin(a) * compassR * 0.22);
+      ctx.lineTo(Math.cos(a) * tipR, Math.sin(a) * tipR);
       ctx.stroke();
+      if (isPrimary) {
+        // Diamond snowflake branches near tip
+        const bx = Math.cos(a) * compassR * 0.88;
+        const by = Math.sin(a) * compassR * 0.88;
+        ctx.beginPath();
+        ctx.moveTo(bx + Math.cos(a + 0.5) * 9, by + Math.sin(a + 0.5) * 9);
+        ctx.lineTo(Math.cos(a) * tipR, Math.sin(a) * tipR);
+        ctx.lineTo(bx + Math.cos(a - 0.5) * 9, by + Math.sin(a - 0.5) * 9);
+        ctx.stroke();
+      }
     }
     ctx.restore();
   } else if (arch === 'boss_kokushibo' || arch === 'kokushibo_demon' || arch === 'muzan_final') {
@@ -1018,7 +1040,8 @@ export function renderFighter(
       styleDef.tsubaColor,
       false,
       v.scale,
-      fighter.animTime
+      fighter.animTime,
+      fighter.breathingStyle
     );
   } else if (v.weapon === 'shotgun_katana') {
     // Genya holds Nichirin sawed-off double-barrel shotgun in offhand!
@@ -1503,7 +1526,8 @@ export function renderFighter(
     tsubaCol,
     isBreathing || hasRedBlade,
     v.scale,
-    fighter.animTime
+    fighter.animTime,
+    fighter.breathingStyle
   );
 
   // Front Forearm + Gripping Fist drawn over hilt
@@ -1591,27 +1615,113 @@ export function renderFighter(
     ctx.restore();
   }
 
-  // Transparent World Weak-Point Target Reticle on Demon
+  // Transparent World X-Ray Anatomy (Glowing Cyan Skeleton, Vital Organs & Weak-Point Reticle)
   if (options?.showWeakPointReticle && fighter.hp > 0) {
     ctx.save();
+    const beat = 1 + Math.sin(fighter.animTime * 11) * 0.14;
+    const isMuzanCore =
+      fighter.demonArchetype === 'boss_muzan' ||
+      fighter.demonArchetype === 'muzan_final' ||
+      fighter.demonArchetype === 'muzan_adult';
+
+    // Subtle translucent X-Ray bone pass anchored directly to live joint pose
+    const boneColor = 'rgba(186, 230, 253, 0.85)';
+    ctx.strokeStyle = boneColor;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const drawBone = (a: Vec2, b: Vec2, width: number) => {
+      ctx.lineWidth = width * v.scale;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    };
+
+    // Limb bones (humerus, radius, femur, tibia)
+    drawBone(pose.lShoulder, pose.lElbow, 2.2);
+    drawBone(pose.lElbow, pose.lHand, 1.8);
+    drawBone(pose.rShoulder, pose.rElbow, 2.2);
+    drawBone(pose.rElbow, pose.rHand, 1.8);
+    drawBone(pose.pelvis, pose.lKnee, 2.6);
+    drawBone(pose.lKnee, pose.lFoot, 2.1);
+    drawBone(pose.pelvis, pose.rKnee, 2.6);
+    drawBone(pose.rKnee, pose.rFoot, 2.1);
+
+    // Cervical & Thoracic Spine + Pelvis
+    drawBone(pose.head, pose.chest, 2.6);
+    drawBone(pose.chest, pose.pelvis, 2.8);
+    ctx.lineWidth = 2.2 * v.scale;
+    ctx.beginPath();
+    ctx.ellipse(pose.pelvis.x, pose.pelvis.y, 10 * v.scale, 4.5 * v.scale, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Ribcage Arches around Chest
+    for (let r = -1; r <= 2; r++) {
+      const ry = pose.chest.y + r * 5.2 * v.scale;
+      const rw = (11.5 - Math.abs(r) * 1.4) * v.scale;
+      ctx.lineWidth = 1.6 * v.scale;
+      ctx.beginPath();
+      ctx.ellipse(pose.chest.x, ry, rw, 3.4 * v.scale, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Cranial X-Ray Skull & Eyesockets
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.22)';
+    ctx.strokeStyle = 'rgba(224, 242, 254, 0.88)';
+    ctx.lineWidth = 2.0 * v.scale;
+    ctx.beginPath();
+    ctx.arc(pose.head.x, pose.head.y, 9.5 * v.scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Vital Organs: Lungs + Pulsing Heart(s) & Muzan Multi-Heart / Multi-Brain
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.42)';
+    ctx.beginPath();
+    ctx.ellipse(pose.chest.x - 4.8 * v.scale, pose.chest.y - 1 * v.scale, 4.2 * v.scale, 6.2 * v.scale, -0.15, 0, Math.PI * 2);
+    ctx.ellipse(pose.chest.x + 4.8 * v.scale, pose.chest.y - 1 * v.scale, 4.2 * v.scale, 6.2 * v.scale, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (isMuzanCore) {
+      // Canon 7 pulsing hearts across torso + 5 cranial brains inside skull
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.88)';
+      for (let h = 0; h < 7; h++) {
+        const hx = pose.chest.x + ((h % 3) - 1) * 5.5 * v.scale;
+        const hy = pose.chest.y - 8 * v.scale + Math.floor(h / 3) * 8 * v.scale;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 2.9 * beat * v.scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(251, 113, 133, 0.82)';
+      for (let b = 0; b < 5; b++) {
+        const bx = pose.head.x + Math.cos((b / 5) * Math.PI * 2) * 3.8 * v.scale;
+        const by = pose.head.y + Math.sin((b / 5) * Math.PI * 2) * 3.2 * v.scale;
+        ctx.beginPath();
+        ctx.arc(bx, by, 2.0 * beat * v.scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.92)';
+      ctx.beginPath();
+      ctx.arc(pose.chest.x + f * 2 * v.scale, pose.chest.y - 2 * v.scale, 4.6 * beat * v.scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Transparent World Weak-Point Crosshair Reticle
     const pulse = 1 + Math.sin(fighter.animTime * 14) * 0.14;
     const rx = pose.chest.x;
     const ry = pose.chest.y - 4 * v.scale;
     ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.9;
     ctx.beginPath();
-    ctx.arc(rx, ry, 14 * pulse * v.scale, 0, Math.PI * 2);
+    ctx.arc(rx, ry, 15 * pulse * v.scale, 0, Math.PI * 2);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(rx - 18 * v.scale, ry);
-    ctx.lineTo(rx + 18 * v.scale, ry);
-    ctx.moveTo(rx, ry - 18 * v.scale);
-    ctx.lineTo(rx, ry + 18 * v.scale);
+    ctx.moveTo(rx - 19 * v.scale, ry);
+    ctx.lineTo(rx + 19 * v.scale, ry);
+    ctx.moveTo(rx, ry - 19 * v.scale);
+    ctx.lineTo(rx, ry + 19 * v.scale);
     ctx.stroke();
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.55)';
-    ctx.beginPath();
-    ctx.arc(rx, ry, 4.2 * v.scale, 0, Math.PI * 2);
-    ctx.fill();
     ctx.restore();
   }
 
@@ -1694,7 +1804,8 @@ function renderWeapon(
   tsubaColor: string,
   glow: boolean,
   scale: number,
-  animTime = 0
+  animTime = 0,
+  breathingStyle?: BreathingStyleId
 ): void {
   if (weapon === 'unarmed_claws' || weapon === 'muzan_tentacles') {
     ctx.save();
@@ -1860,6 +1971,49 @@ function renderWeapon(
     ctx.fillStyle = bladeBaseColor;
     ctx.fill();
     ctx.strokeStyle = bladeEdgeColor;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  } else if (weapon === 'katana' && breathingStyle === 'stone') {
+    // Stone-Cleaver Nichirin Broadsword (heavy chiseled granite broad-blade + pommel iron ring)
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(-19, 0, 3.2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    const stoneLen = 82;
+    const sGrad = ctx.createLinearGradient(10, -7, 10, 6);
+    sGrad.addColorStop(0, '#1c1917');
+    sGrad.addColorStop(0.38, '#57534e');
+    sGrad.addColorStop(0.7, glow ? '#e7e5e4' : '#78716c');
+    sGrad.addColorStop(1, glow ? '#ffffff' : '#d6d3d1');
+
+    ctx.beginPath();
+    ctx.moveTo(10, -5.2);
+    ctx.lineTo(stoneLen - 16, -6.5);
+    ctx.lineTo(stoneLen - 8, -4.0);
+    ctx.lineTo(stoneLen + 5, 1.5);
+    ctx.lineTo(stoneLen - 10, 4.8);
+    ctx.lineTo(10, 4.2);
+    ctx.closePath();
+    ctx.fillStyle = sGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#090d16';
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+
+    // Faceted stone fuller chisel groove & cleaved edge
+    ctx.beginPath();
+    ctx.moveTo(14, -1.6);
+    ctx.lineTo(stoneLen - 15, -2.0);
+    ctx.strokeStyle = glow ? '#fafaf9' : '#a8a29e';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(12, 3.2);
+    ctx.lineTo(stoneLen - 9, 3.6);
+    ctx.strokeStyle = glow ? '#ffffff' : bladeEdgeColor;
     ctx.lineWidth = 1.5;
     ctx.stroke();
   } else {

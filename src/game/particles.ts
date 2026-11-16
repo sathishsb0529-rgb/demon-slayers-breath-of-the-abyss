@@ -918,18 +918,34 @@ export class ParticleSystem {
         ctx.fill();
         ctx.stroke();
       } else if (p.kind === 'compass_wave') {
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const a = (i / 6) * Math.PI * 2 + now * 0.3;
-          ctx.moveTo(0, 0);
-          ctx.lineTo(Math.cos(a) * p.radius * 1.4, Math.sin(a) * p.radius * 1.4);
+        // Destructive Death: Air Type (directional compressed sonic fist shockwaves & jet rings)
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.rotate(angle);
+        // Trailing wind-jet streaks
+        ctx.strokeStyle = 'rgba(186, 230, 253, 0.72)';
+        ctx.lineWidth = 2.0;
+        for (let w = -1; w <= 1; w++) {
+          ctx.beginPath();
+          ctx.moveTo(-p.radius * 2.1, w * 7);
+          ctx.lineTo(-p.radius * 0.4, w * 3.5);
+          ctx.stroke();
         }
-        ctx.stroke();
+        // Compressed outer pressure shock-ring (elliptical cone orthogonal to travel)
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 3.2;
         ctx.beginPath();
-        ctx.arc(0, 0, p.radius * 1.1, 0, Math.PI * 2);
+        ctx.ellipse(-p.radius * 0.2, 0, p.radius * 0.55, p.radius * 1.45, 0, 0, Math.PI * 2);
         ctx.stroke();
+        // Forward sonic fist impact wave arc + magenta kinetic core
+        ctx.strokeStyle = p.glowColor || '#f43f5e';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(p.radius * 0.25, 0, p.radius * 1.05, -Math.PI * 0.44, Math.PI * 0.44);
+        ctx.stroke();
+        ctx.fillStyle = '#e0f2fe';
+        ctx.beginPath();
+        ctx.ellipse(p.radius * 0.35, 0, p.radius * 0.55, p.radius * 0.34, 0, 0, Math.PI * 2);
+        ctx.fill();
       } else if (p.kind === 'pellet') {
         ctx.fillStyle = '#fde047';
         ctx.beginPath();

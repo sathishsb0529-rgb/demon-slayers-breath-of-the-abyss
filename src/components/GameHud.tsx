@@ -66,6 +66,9 @@ export function GameHud({
           <div className="flex items-baseline justify-between gap-2">
             <span className="font-display truncate text-xs font-bold tracking-wider text-slate-100 sm:text-sm">
               {hud.playerName}
+              <span className="font-mono-num ml-1.5 text-[10px] font-bold text-sky-300">
+                Lv.{hud.playerLevel}
+              </span>
               {hud.awakeningActive && (
                 <span className="ml-1.5 text-[10px] font-extrabold text-amber-300 uppercase">
                   · {awkTierName}

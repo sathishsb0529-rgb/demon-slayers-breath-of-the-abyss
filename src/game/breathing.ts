@@ -894,7 +894,7 @@ export const ALL_BREATHING_IDS = Object.keys(BREATHING_STYLES) as BreathingStyle
 export interface AwakeningTierSpec {
   id: AwakeningTierId;
   name: string;
-  price: number;
+  requiredLevel: number;
   duration: number;
   damageBonus: number;
   speedBonus: number;
@@ -906,7 +906,7 @@ export const AWAKENING_SPECS: Record<AwakeningTierId, AwakeningTierSpec> = {
   mark: {
     id: 'mark',
     name: 'Demon Slayer Mark',
-    price: 0,
+    requiredLevel: 1,
     duration: 12,
     damageBonus: 0.22,
     speedBonus: 0.14,
@@ -916,27 +916,27 @@ export const AWAKENING_SPECS: Record<AwakeningTierId, AwakeningTierSpec> = {
   transparent_world: {
     id: 'transparent_world',
     name: 'Transparent World',
-    price: 220,
+    requiredLevel: 4,
     duration: 13,
     damageBonus: 0.28,
     speedBonus: 0.2,
     badgeColor: '#38bdf8',
-    summary: 'Reveals enemy weak points (+22% critical hits) and slightly slows demon strike speed.',
+    summary: 'X-Ray vision revealing demon skeletons, vital organs & weak points (+22% crits) while slowing enemy strikes.',
   },
   red_blade: {
     id: 'red_blade',
     name: 'Bright Red Nichirin Blade',
-    price: 280,
+    requiredLevel: 7,
     duration: 13,
     damageBonus: 0.34,
     speedBonus: 0.16,
     badgeColor: '#dc2626',
-    summary: 'Scorches blade crimson: suppresses demon cellular regeneration and applies burn damage.',
+    summary: 'Scorches blade crimson: suppresses demon cellular regeneration and inflicts burning damage.',
   },
   selfless_state: {
     id: 'selfless_state',
     name: 'Selfless State',
-    price: 340,
+    requiredLevel: 10,
     duration: 14,
     damageBonus: 0.38,
     speedBonus: 0.24,
@@ -946,7 +946,7 @@ export const AWAKENING_SPECS: Record<AwakeningTierId, AwakeningTierSpec> = {
   transcendent: {
     id: 'transcendent',
     name: 'Transcendent Slayer Mode',
-    price: 450,
+    requiredLevel: 14,
     duration: 15,
     damageBonus: 0.48,
     speedBonus: 0.28,
@@ -954,6 +954,13 @@ export const AWAKENING_SPECS: Record<AwakeningTierId, AwakeningTierSpec> = {
     summary: 'Fuses Mark, Transparent World, Bright Red Blade & Selfless State simultaneously.',
   },
 };
+
+export function getUnlockedAwakeningsForLevel(playerLevel: number): AwakeningTierId[] {
+  const safeLv = Math.max(1, Math.floor(playerLevel));
+  return (Object.values(AWAKENING_SPECS) as AwakeningTierSpec[])
+    .filter((tier) => safeLv >= tier.requiredLevel)
+    .map((tier) => tier.id);
+}
 
 export interface UltimateAttackSpec {
   id: UltimateId;

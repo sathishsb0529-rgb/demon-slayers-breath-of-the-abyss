@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
-  Film,
   Gamepad2,
   Sliders,
   Sparkles,
@@ -20,7 +19,6 @@ interface SettingsModalProps {
   onUpdateAudio: (audio: AudioSettings) => void;
   onUpdateGameplay: (gameplay: GameplaySettings) => void;
   onToggleSkipSeenCutscenes: (skip: boolean) => void;
-  onReplayPrologue: () => void;
 }
 
 interface ToggleRowProps {
@@ -80,7 +78,6 @@ export function SettingsModal({
   onUpdateAudio,
   onUpdateGameplay,
   onToggleSkipSeenCutscenes,
-  onReplayPrologue,
 }: SettingsModalProps) {
   const { audio, gameplay, controlsLayout } = save;
   const [showBloodWarning, setShowBloodWarning] = useState(false);
@@ -265,32 +262,54 @@ export function SettingsModal({
               <span>Audio Settings</span>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-white">Sound Output</p>
-                <p className="text-xs text-slate-400">
-                  Procedural Japanese taiko music & sword sound effects
-                </p>
+            <div className="space-y-2">
+              <ToggleRow
+                label="Music"
+                description="Orchestral Main Menu & combat soundtrack"
+                enabled={audio.musicEnabled}
+                activeColor="sky"
+                onLabel="ON"
+                offLabel="OFF"
+                onToggle={() => onUpdateAudio({ ...audio, musicEnabled: !audio.musicEnabled })}
+              />
+
+              <ToggleRow
+                label="Sound Effects"
+                description="Katana slashes, Breathing Arts & demon growls/laughter"
+                enabled={audio.sfxEnabled}
+                activeColor="emerald"
+                onLabel="ON"
+                offLabel="OFF"
+                onToggle={() => onUpdateAudio({ ...audio, sfxEnabled: !audio.sfxEnabled })}
+              />
+
+              <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-2.5">
+                <div>
+                  <p className="text-sm font-semibold text-white">Master Mute</p>
+                  <p className="text-xs text-slate-400">
+                    Silence all game audio immediately
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onUpdateAudio({ ...audio, muted: !audio.muted })}
+                  className={`min-h-[40px] rounded-lg px-3.5 py-1.5 text-xs font-bold transition-colors ${
+                    audio.muted
+                      ? 'border border-rose-500/60 bg-rose-950/50 text-rose-200'
+                      : 'bg-sky-500 text-slate-950 hover:bg-sky-400'
+                  }`}
+                >
+                  {audio.muted ? 'Muted' : 'Active'}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => onUpdateAudio({ ...audio, muted: !audio.muted })}
-                className={`min-h-[40px] rounded-lg px-3.5 py-1.5 text-xs font-bold transition-colors ${
-                  audio.muted
-                    ? 'border border-rose-500/60 bg-rose-950/50 text-rose-200'
-                    : 'bg-sky-500 text-slate-950 hover:bg-sky-400'
-                }`}
-              >
-                {audio.muted ? 'Muted' : 'Active'}
-              </button>
             </div>
 
             <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3">
               {(
                 [
                   { key: 'masterVolume', label: 'Master Volume' },
-                  { key: 'musicVolume', label: 'Music Volume' },
-                  { key: 'sfxVolume', label: 'SFX Volume' },
+                  { key: 'musicVolume', label: 'Background Music Volume' },
+                  { key: 'sfxVolume', label: 'Sound Effects Volume' },
                 ] as const
               ).map((item) => {
                 const pct = Math.round(audio[item.key] * 100);
@@ -338,16 +357,7 @@ export function SettingsModal({
             />
           </section>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3">
-            <button
-              type="button"
-              onClick={onReplayPrologue}
-              className="flex min-h-[44px] items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-100 hover:border-sky-400"
-            >
-              <Film className="h-4 w-4 text-sky-300" />
-              <span>Watch Opening Prologue</span>
-            </button>
-
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-800 pt-3">
             <button
               type="button"
               onClick={onClose}

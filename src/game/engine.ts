@@ -47,6 +47,7 @@ import {
 } from './constants';
 import { DEMON_TEMPLATES } from './demons';
 import { ParticleSystem } from './particles';
+import { getXpForNextLevel } from './save';
 import {
   activateRagdoll,
   createEmptyRagdoll,
@@ -448,6 +449,8 @@ export class GameEngine {
   private actionWarningTimer = 0;
   private coinsBalance = 0;
   private coinsEarnedThisRun = 0;
+  private playerLevel = 1;
+  private playerXp = 0;
   private lastRank: 'S' | 'A' | 'B' | null = null;
   private killsThisRun = 0;
   private isCurrentBossBattle = false;
@@ -485,6 +488,32 @@ export class GameEngine {
 
   public setCoinsBalance(coins: number): void {
     this.coinsBalance = coins;
+    this.emitHudSnapshot();
+  }
+
+  public setPlayerProgression(level: number, xp: number, newlyUnlockedNames?: string[]): void {
+    const leveledUp = level > this.playerLevel;
+    this.playerLevel = Math.max(1, level);
+    this.playerXp = Math.max(0, xp);
+    if (leveledUp && this.phase === 'PLAYING') {
+      this.sound.playAwakening();
+      this.particles.spawnFloatingText(
+        this.player.x,
+        this.player.y - 165,
+        `LEVEL UP! LV.${this.playerLevel}`,
+        '#fde047',
+        1.35
+      );
+      if (newlyUnlockedNames && newlyUnlockedNames.length > 0) {
+        this.particles.spawnFloatingText(
+          this.player.x,
+          this.player.y - 196,
+          `AWAKENING UNLOCKED: ${newlyUnlockedNames[0].toUpperCase()}!`,
+          '#38bdf8',
+          1.2
+        );
+      }
+    }
     this.emitHudSnapshot();
   }
 
@@ -1259,6 +1288,7 @@ export class GameEngine {
           this.enemyEngaged = true;
           if (this.isCurrentBossBattle) {
             this.sound.playBossEntrance();
+            this.sound.playDemonLaugh();
             this.triggerDemonSpeech(this.enemy, 'engage');
           } else {
             this.sound.playDemonRoar();
@@ -2512,10 +2542,12 @@ export class GameEngine {
     if (this.survivalWave === 20) {
       this.sound.setMusicContext('survival_boss', this.mapId, true, nextSpawn.archetype, this.activeCampaignCharId);
       this.sound.playBossEntrance();
+      this.sound.playDemonLaugh();
       this.triggerDemonSpeech(this.enemy, 'engage');
     } else if (nextSpawn.isBoss) {
       this.sound.setMusicContext('survival_boss', this.mapId, true, nextSpawn.archetype, this.activeCampaignCharId);
       this.sound.playBossEntrance();
+      this.sound.playDemonLaugh();
     } else {
       this.sound.setMusicContext('survival', this.mapId, false, nextSpawn.archetype, this.activeCampaignCharId);
       this.sound.playDemonRoar();
@@ -2610,6 +2642,7 @@ export class GameEngine {
           );
           if (this.enemyEngaged) {
             this.sound.playBossEntrance();
+            this.sound.playDemonLaugh();
             this.triggerDemonSpeech(this.enemy, 'engage');
           }
         } else if (this.enemyEngaged) {
@@ -2941,6 +2974,9 @@ export class GameEngine {
 
       coins: this.coinsBalance,
       coinsEarnedThisRun: this.coinsEarnedThisRun,
+      playerLevel: this.playerLevel,
+      playerXp: this.playerXp,
+      playerXpToNext: getXpForNextLevel(this.playerLevel),
       lastRank: this.lastRank,
       comboCount: this.player.hitCount,
       muted: this.sound.isMuted(),

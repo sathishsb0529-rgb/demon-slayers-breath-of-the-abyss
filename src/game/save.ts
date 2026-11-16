@@ -1,3 +1,4 @@
+import { AWAKENING_SPECS, getUnlockedAwakeningsForLevel } from './breathing';
 import { getCharacterById } from './characters';
 import { cloneDefaultControlsLayout, sanitizeControlsLayout } from './controlsLayout';
 import {
@@ -17,6 +18,8 @@ const SAVE_KEY = 'dh_breath_of_the_abyss_save_v2';
 
 export const DEFAULT_AUDIO: AudioSettings = {
   muted: false,
+  musicEnabled: true,
+  sfxEnabled: true,
   masterVolume: 0.85,
   musicVolume: 0.68,
   sfxVolume: 0.85,
@@ -44,11 +47,54 @@ function sanitizeGameplaySettings(raw?: Partial<GameplaySettings>): GameplaySett
   };
 }
 
+export function getXpForNextLevel(level: number): number {
+  return 80 + (Math.max(1, Math.floor(level)) - 1) * 55;
+}
+
+export function applyXpToProfile(
+  profile: CharacterProfile,
+  xpGain: number
+): {
+  profile: CharacterProfile;
+  leveledUp: boolean;
+  newLevel: number;
+  newlyUnlockedAwakenings: AwakeningTierId[];
+} {
+  const safeGain = Math.max(0, Math.floor(xpGain));
+  let level = Math.max(1, Math.floor(profile.playerLevel || 1));
+  let xp = Math.max(0, Math.floor(profile.playerXp || 0)) + safeGain;
+  const startLevel = level;
+
+  while (xp >= getXpForNextLevel(level) && level < 99) {
+    xp -= getXpForNextLevel(level);
+    level += 1;
+  }
+
+  const levelUnlocks = getUnlockedAwakeningsForLevel(level);
+  const prevUnlocked = new Set<AwakeningTierId>(['mark', ...profile.unlockedAwakenings]);
+  const newlyUnlockedAwakenings = levelUnlocks.filter((id) => !prevUnlocked.has(id));
+  const mergedAwakenings = Array.from(new Set<AwakeningTierId>(['mark', ...profile.unlockedAwakenings, ...levelUnlocks]));
+
+  return {
+    profile: {
+      ...profile,
+      playerLevel: level,
+      playerXp: xp,
+      unlockedAwakenings: mergedAwakenings,
+    },
+    leveledUp: level > startLevel,
+    newLevel: level,
+    newlyUnlockedAwakenings,
+  };
+}
+
 export function createDefaultCharacterProfile(charId: string): CharacterProfile {
   const charDef = getCharacterById(charId);
   return {
     characterId: charDef.id,
     coins: 80,
+    playerLevel: 1,
+    playerXp: 0,
     highestUnlockedLevel: 1,
     levelBestRanks: {},
     seenCutscenes: [],
@@ -79,9 +125,26 @@ function sanitizeProfile(charId: string, raw?: Partial<CharacterProfile>): Chara
     ? Array.from(new Set(['classic', selectedSkinId, ...raw.unlockedSkins]))
     : Array.from(new Set(['classic', selectedSkinId]));
 
+  const highestUnlockedLevel =
+    typeof raw.highestUnlockedLevel === 'number'
+      ? Math.max(1, Math.min(50, Math.floor(raw.highestUnlockedLevel)))
+      : 1;
+  const totalDemonsDefeated =
+    typeof raw.totalDemonsDefeated === 'number' ? Math.max(0, raw.totalDemonsDefeated) : 0;
+
+  const playerLevel =
+    typeof raw.playerLevel === 'number' && Number.isFinite(raw.playerLevel) && raw.playerLevel >= 1
+      ? Math.max(1, Math.min(99, Math.floor(raw.playerLevel)))
+      : Math.max(1, Math.floor((highestUnlockedLevel - 1) / 3) + 1, Math.floor(totalDemonsDefeated / 4) + 1);
+  const playerXp =
+    typeof raw.playerXp === 'number' && Number.isFinite(raw.playerXp) && raw.playerXp >= 0
+      ? Math.min(getXpForNextLevel(playerLevel) - 1, Math.floor(raw.playerXp))
+      : 0;
+
+  const levelUnlocks = getUnlockedAwakeningsForLevel(playerLevel);
   const unlockedAwakenings = Array.isArray(raw.unlockedAwakenings)
-    ? (Array.from(new Set(['mark', ...raw.unlockedAwakenings])) as AwakeningTierId[])
-    : (['mark'] as AwakeningTierId[]);
+    ? (Array.from(new Set(['mark', ...raw.unlockedAwakenings, ...levelUnlocks])) as AwakeningTierId[])
+    : (Array.from(new Set(['mark', ...levelUnlocks])) as AwakeningTierId[]);
 
   const unlockedUltimates = Array.isArray(raw.unlockedUltimates)
     ? (Array.from(new Set(['eternal_sun', ...raw.unlockedUltimates])) as UltimateId[])
@@ -95,10 +158,9 @@ function sanitizeProfile(charId: string, raw?: Partial<CharacterProfile>): Chara
   return {
     characterId: charDef.id,
     coins: typeof raw.coins === 'number' && raw.coins >= 0 ? Math.floor(raw.coins) : base.coins,
-    highestUnlockedLevel:
-      typeof raw.highestUnlockedLevel === 'number'
-        ? Math.max(1, Math.min(50, Math.floor(raw.highestUnlockedLevel)))
-        : 1,
+    playerLevel,
+    playerXp,
+    highestUnlockedLevel,
     levelBestRanks:
       raw.levelBestRanks && typeof raw.levelBestRanks === 'object' ? { ...raw.levelBestRanks } : {},
     seenCutscenes: Array.isArray(raw.seenCutscenes) ? [...raw.seenCutscenes] : [],
@@ -115,8 +177,7 @@ function sanitizeProfile(charId: string, raw?: Partial<CharacterProfile>): Chara
       defense: Math.max(0, Math.min(5, Math.floor(raw.upgrades?.defense ?? 0))),
       breathing: Math.max(0, Math.min(5, Math.floor(raw.upgrades?.breathing ?? 0))),
     },
-    totalDemonsDefeated:
-      typeof raw.totalDemonsDefeated === 'number' ? Math.max(0, raw.totalDemonsDefeated) : 0,
+    totalDemonsDefeated,
     storyChoices:
       raw.storyChoices && typeof raw.storyChoices === 'object' ? { ...raw.storyChoices } : {},
   };
@@ -129,6 +190,8 @@ function syncTopLevelWithActiveProfile(save: SaveData): SaveData {
   return {
     ...save,
     coins: active.coins,
+    playerLevel: active.playerLevel,
+    playerXp: active.playerXp,
     selectedBreathing: active.selectedBreathing,
     tutorialCompleted: active.tutorialCompleted,
     highestUnlockedLevel: active.highestUnlockedLevel,
@@ -153,6 +216,8 @@ const DEFAULT_SURVIVAL_STATS: SurvivalStats = {
 
 export const DEFAULT_SAVE: SaveData = {
   coins: INITIAL_TANJIRO_PROFILE.coins,
+  playerLevel: INITIAL_TANJIRO_PROFILE.playerLevel,
+  playerXp: INITIAL_TANJIRO_PROFILE.playerXp,
   unlockedCharacters: ['tanjiro', 'zenitsu', 'inosuke', 'kanao', 'genya'],
   selectedCharacterId: 'tanjiro',
   selectedBreathing: 'water',
@@ -235,6 +300,8 @@ export function loadSaveData(): SaveData {
 
     const baseSave: SaveData = {
       coins: characterProfiles[selectedChar].coins,
+      playerLevel: characterProfiles[selectedChar].playerLevel,
+      playerXp: characterProfiles[selectedChar].playerXp,
       unlockedCharacters: unlocked,
       selectedCharacterId: selectedChar,
       selectedBreathing: characterProfiles[selectedChar].selectedBreathing,
@@ -246,6 +313,8 @@ export function loadSaveData(): SaveData {
       skipSeenCutscenes: Boolean(parsed.skipSeenCutscenes),
       audio: {
         muted: Boolean(parsed.audio?.muted),
+        musicEnabled: parsed.audio?.musicEnabled !== undefined ? Boolean(parsed.audio.musicEnabled) : true,
+        sfxEnabled: parsed.audio?.sfxEnabled !== undefined ? Boolean(parsed.audio.sfxEnabled) : true,
         masterVolume:
           typeof parsed.audio?.masterVolume === 'number' ? parsed.audio.masterVolume : DEFAULT_AUDIO.masterVolume,
         musicVolume:
@@ -488,26 +557,35 @@ export function purchaseCharacterSkin(
   return { ok: true, save: updated, message: `Unlocked and equipped ${skinName}!` };
 }
 
-export function purchaseAwakeningTier(
+export function grantCharacterXp(
   save: SaveData,
-  charId: string,
-  tierId: AwakeningTierId,
-  label: string,
-  price: number
-): { ok: boolean; save: SaveData; message: string } {
-  const target = getCharacterProfile(save, charId);
-  if (target.unlockedAwakenings.includes(tierId)) {
-    return { ok: false, save, message: `${label} already unlocked.` };
-  }
-  if (target.coins < price) {
-    return { ok: false, save, message: `Need ${price - target.coins} more Coins.` };
-  }
-  const updated = updateProfileForChar(save, charId, (p) => ({
-    ...p,
-    coins: p.coins - price,
-    unlockedAwakenings: Array.from(new Set([...p.unlockedAwakenings, tierId])),
-  }));
-  return { ok: true, save: updated, message: `Unlocked Awakening Power: ${label}!` };
+  xpGain: number,
+  charId?: string
+): {
+  save: SaveData;
+  leveledUp: boolean;
+  newLevel: number;
+  newlyUnlockedAwakenings: AwakeningTierId[];
+  unlockedNames: string[];
+} {
+  const targetId = charId ?? save.selectedCharacterId;
+  const current = getCharacterProfile(save, targetId);
+  const res = applyXpToProfile(current, xpGain);
+  const updated = syncTopLevelWithActiveProfile({
+    ...save,
+    characterProfiles: {
+      ...save.characterProfiles,
+      [targetId]: res.profile,
+    },
+  });
+  writeSaveData(updated);
+  return {
+    save: updated,
+    leveledUp: res.leveledUp,
+    newLevel: res.newLevel,
+    newlyUnlockedAwakenings: res.newlyUnlockedAwakenings,
+    unlockedNames: res.newlyUnlockedAwakenings.map((id) => AWAKENING_SPECS[id].name),
+  };
 }
 
 export function purchaseUltimate(
@@ -593,10 +671,13 @@ export function purchaseDemonSkin(
 
 export function awardExplorationCoins(save: SaveData, coins: number): SaveData {
   if (coins <= 0) return save;
-  return updateActiveProfile(save, (p) => ({
-    ...p,
-    coins: p.coins + Math.floor(coins),
-  }));
+  return updateActiveProfile(save, (p) => {
+    const withCoins: CharacterProfile = {
+      ...p,
+      coins: p.coins + Math.floor(coins),
+    };
+    return applyXpToProfile(withCoins, 18).profile;
+  });
 }
 
 export function recordSurvivalProgress(
@@ -606,11 +687,15 @@ export function recordSurvivalProgress(
   coinsEarned: number,
   demonsDefeated: number
 ): SaveData {
-  const withProfile = updateActiveProfile(save, (p) => ({
-    ...p,
-    coins: p.coins + Math.max(0, Math.floor(coinsEarned)),
-    totalDemonsDefeated: p.totalDemonsDefeated + Math.max(0, demonsDefeated),
-  }));
+  const xpGain = Math.max(30, waveReached * 40 + demonsDefeated * 20);
+  const withProfile = updateActiveProfile(save, (p) => {
+    const base: CharacterProfile = {
+      ...p,
+      coins: p.coins + Math.max(0, Math.floor(coinsEarned)),
+      totalDemonsDefeated: p.totalDemonsDefeated + Math.max(0, demonsDefeated),
+    };
+    return applyXpToProfile(base, xpGain).profile;
+  });
   const updated: SaveData = {
     ...withProfile,
     survivalStats: {
@@ -622,6 +707,30 @@ export function recordSurvivalProgress(
   };
   writeSaveData(updated);
   return updated;
+}
+
+export function recordFreeBattleReward(
+  save: SaveData,
+  coinsEarned: number,
+  demonsDefeated: number
+): { save: SaveData; leveledUp: boolean; newLevel: number; unlockedNames: string[] } {
+  let leveledUp = false;
+  let newLevel = getCharacterProfile(save).playerLevel;
+  let unlockedNames: string[] = [];
+  const xpGain = Math.max(45, 55 + demonsDefeated * 20);
+  const updated = updateActiveProfile(save, (p) => {
+    const withReward: CharacterProfile = {
+      ...p,
+      coins: p.coins + Math.max(0, Math.floor(coinsEarned)),
+      totalDemonsDefeated: p.totalDemonsDefeated + Math.max(0, demonsDefeated),
+    };
+    const res = applyXpToProfile(withReward, xpGain);
+    leveledUp = res.leveledUp;
+    newLevel = res.newLevel;
+    unlockedNames = res.newlyUnlockedAwakenings.map((id) => AWAKENING_SPECS[id].name);
+    return res.profile;
+  });
+  return { save: updated, leveledUp, newLevel, unlockedNames };
 }
 
 export function recordStoryDecision(save: SaveData, key: string, choice: string): SaveData {
@@ -669,12 +778,15 @@ export function resetControlsLayout(save: SaveData): SaveData {
 }
 
 export function recordTutorialCompleted(save: SaveData, bonusCoins = 80): SaveData {
-  return updateActiveProfile(save, (p) => ({
-    ...p,
-    tutorialCompleted: true,
-    coins: p.coins + (p.tutorialCompleted ? 15 : bonusCoins),
-    highestUnlockedLevel: Math.max(1, p.highestUnlockedLevel),
-  }));
+  return updateActiveProfile(save, (p) => {
+    const withReward: CharacterProfile = {
+      ...p,
+      tutorialCompleted: true,
+      coins: p.coins + (p.tutorialCompleted ? 15 : bonusCoins),
+      highestUnlockedLevel: Math.max(1, p.highestUnlockedLevel),
+    };
+    return applyXpToProfile(withReward, p.tutorialCompleted ? 35 : 75).profile;
+  });
 }
 
 export function recordLevelVictory(
@@ -685,10 +797,11 @@ export function recordLevelVictory(
   demonsDefeated: number
 ): SaveData {
   const rankWeight = { B: 1, A: 2, S: 3 };
+  const xpGain = Math.max(60, 95 + levelId * 4 + demonsDefeated * 25);
   return updateActiveProfile(save, (p) => {
     const prevRank = p.levelBestRanks[levelId];
     const bestRank = !prevRank || rankWeight[rank] > rankWeight[prevRank] ? rank : prevRank;
-    return {
+    const withReward: CharacterProfile = {
       ...p,
       coins: p.coins + coinsEarned,
       highestUnlockedLevel: Math.min(50, Math.max(p.highestUnlockedLevel, levelId + 1)),
@@ -698,5 +811,32 @@ export function recordLevelVictory(
       },
       totalDemonsDefeated: p.totalDemonsDefeated + demonsDefeated,
     };
+    return applyXpToProfile(withReward, xpGain).profile;
   });
+}
+
+export function resetCampaignForNewGame(save: SaveData): SaveData {
+  const active = getCharacterProfile(save);
+  const freshProfile: CharacterProfile = {
+    ...active,
+    coins: 80,
+    playerLevel: 1,
+    playerXp: 0,
+    highestUnlockedLevel: 1,
+    levelBestRanks: {},
+    seenCutscenes: [],
+    tutorialCompleted: false,
+    unlockedAwakenings: ['mark'],
+    upgrades: { vitality: 0, blade: 0, defense: 0, breathing: 0 },
+    storyChoices: {},
+  };
+  const updated = syncTopLevelWithActiveProfile({
+    ...save,
+    characterProfiles: {
+      ...save.characterProfiles,
+      [save.selectedCharacterId]: freshProfile,
+    },
+  });
+  writeSaveData(updated);
+  return updated;
 }

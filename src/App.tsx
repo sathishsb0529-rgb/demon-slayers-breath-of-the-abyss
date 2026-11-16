@@ -16,7 +16,6 @@ import { GameOverlays } from './components/GameOverlays';
 import { MobileControls } from './components/MobileControls';
 import { RosterShopModal } from './components/RosterShopModal';
 import { SettingsModal } from './components/SettingsModal';
-import { StoryGalleryModal } from './components/StoryGalleryModal';
 import { SoundEngine } from './game/audio';
 import { AWAKENING_SPECS, ULTIMATE_SPECS } from './game/breathing';
 import {
@@ -34,14 +33,15 @@ import {
   getCharacterProfile,
   loadSaveData,
   markCutsceneSeen,
-  purchaseAwakeningTier,
   purchaseCharacter,
   purchaseCharacterSkin,
   purchaseDemonSkin,
   purchaseUltimate,
+  recordFreeBattleReward,
   recordLevelVictory,
   recordSurvivalProgress,
   recordTutorialCompleted,
+  resetCampaignForNewGame,
   selectCharacterAndBreathing,
   selectCharacterSkin,
   selectDemonSkin,
@@ -53,7 +53,6 @@ import {
 } from './game/save';
 import {
   AudioSettings,
-  AwakeningTierId,
   BreathingStyleId,
   CharacterUpgrades,
   CutsceneDef,
@@ -81,7 +80,6 @@ type ModalScreen =
   | 'campaign'
   | 'shop'
   | 'demonSkins'
-  | 'storyGallery'
   | 'encyclopedia'
   | 'settings'
   | 'controls';
@@ -146,6 +144,9 @@ const INITIAL_HUD: HudSnapshot = {
   rockMaxHp: 180,
   coins: 80,
   coinsEarnedThisRun: 0,
+  playerLevel: 1,
+  playerXp: 0,
+  playerXpToNext: 80,
   lastRank: null,
   comboCount: 0,
   muted: false,
@@ -165,8 +166,15 @@ export default function App() {
   const saveRef = useRef<SaveData>(save);
   saveRef.current = save;
 
-  const [hud, setHud] = useState<HudSnapshot>({ ...INITIAL_HUD, coins: save.coins });
+  const [hud, setHud] = useState<HudSnapshot>({
+    ...INITIAL_HUD,
+    coins: save.coins,
+    playerLevel: save.playerLevel,
+    playerXp: save.playerXp,
+  });
   const [engineReady, setEngineReady] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashFading, setSplashFading] = useState(false);
 
   const [modalStack, setModalStack] = useState<ModalScreen[]>([]);
   const [pendingAfterCharSelect, setPendingAfterCharSelect] = useState<
@@ -210,51 +218,72 @@ export default function App() {
   };
 
   useEffect(() => {
+    const fadeTimer = setTimeout(() => setSplashFading(true), 1150);
+    const hideTimer = setTimeout(() => setShowSplash(false), 1600);
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(hideTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const unlockOnce = () => {
+      engineRef.current?.sound.unlock();
+    };
+    window.addEventListener('pointerdown', unlockOnce, { passive: true });
+    window.addEventListener('keydown', unlockOnce, { passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlockOnce);
+      window.removeEventListener('keydown', unlockOnce);
+    };
+  }, []);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    const syncProgressionToEngine = (engine: GameEngine, prevSave: SaveData, updated: SaveData) => {
+      const prevUnlocks = new Set(getCharacterProfile(prevSave, prevSave.selectedCharacterId).unlockedAwakenings);
+      const nextProf = getCharacterProfile(updated, updated.selectedCharacterId);
+      const newlyUnlockedNames = nextProf.unlockedAwakenings
+        .filter((id) => !prevUnlocks.has(id))
+        .map((id) => AWAKENING_SPECS[id].name);
+      engine.setCoinsBalance(updated.coins);
+      engine.setPlayerProgression(updated.playerLevel, updated.playerXp, newlyUnlockedNames);
+    };
 
     const engine = new GameEngine(canvas, {
       onHudUpdate: (snapshot) => {
         setHud(snapshot);
       },
       onTutorialComplete: () => {
-        const updated = recordTutorialCompleted(saveRef.current, 80);
+        const prev = saveRef.current;
+        const updated = recordTutorialCompleted(prev, 80);
         setSave(updated);
-        engine.setCoinsBalance(updated.coins);
+        syncProgressionToEngine(engine, prev, updated);
       },
       onExploreCachePickup: (_cacheId, coins) => {
-        const updated = awardExplorationCoins(saveRef.current, coins);
+        const prev = saveRef.current;
+        const updated = awardExplorationCoins(prev, coins);
         setSave(updated);
-        engine.setCoinsBalance(updated.coins);
+        syncProgressionToEngine(engine, prev, updated);
       },
       onSurvivalComplete: (wave, won, coinsEarned, demonsDefeated) => {
-        const updated = recordSurvivalProgress(saveRef.current, wave, won, coinsEarned, demonsDefeated);
+        const prev = saveRef.current;
+        const updated = recordSurvivalProgress(prev, wave, won, coinsEarned, demonsDefeated);
         setSave(updated);
-        engine.setCoinsBalance(updated.coins);
+        syncProgressionToEngine(engine, prev, updated);
       },
       onLevelComplete: (levelId, rank, coinsEarned, kills) => {
+        const prev = saveRef.current;
         let updated: SaveData;
         if (levelId > 0) {
-          updated = recordLevelVictory(saveRef.current, levelId, rank, coinsEarned, kills);
+          updated = recordLevelVictory(prev, levelId, rank, coinsEarned, kills);
         } else {
-          const prof = getCharacterProfile(saveRef.current, saveRef.current.selectedCharacterId);
-          const nextProfiles = {
-            ...saveRef.current.characterProfiles,
-            [saveRef.current.selectedCharacterId]: {
-              ...prof,
-              coins: prof.coins + coinsEarned,
-            },
-          };
-          updated = {
-            ...saveRef.current,
-            coins: saveRef.current.coins + coinsEarned,
-            totalDemonsDefeated: saveRef.current.totalDemonsDefeated + kills,
-            characterProfiles: nextProfiles,
-          };
-          writeSaveData(updated);
+          updated = recordFreeBattleReward(prev, coinsEarned, kills).save;
         }
         setSave(updated);
-        engine.setCoinsBalance(updated.coins);
+        syncProgressionToEngine(engine, prev, updated);
 
         if (levelId > 0) {
           const campaign = getCampaignForCharacter(updated.selectedCharacterId);
@@ -270,7 +299,7 @@ export default function App() {
                   updated.selectedBreathing
                 ),
                 onDone: () => {
-                  setSave((prev) => markCutsceneSeen(prev, postId));
+                  setSave((p) => markCutsceneSeen(p, postId));
                   setActiveCutscene(null);
                 },
               });
@@ -280,6 +309,7 @@ export default function App() {
       },
     });
     engine.setCoinsBalance(saveRef.current.coins);
+    engine.setPlayerProgression(saveRef.current.playerLevel, saveRef.current.playerXp);
     engine.setEquippedDemonSkins(saveRef.current.equippedDemonSkins);
     engine.applyAudioSettings(saveRef.current.audio);
     engine.applyGameplaySettings(saveRef.current.gameplay);
@@ -292,6 +322,19 @@ export default function App() {
       window.AndroidNavigation?.ensureFullscreen?.();
     };
     const handleBlur = () => engine.clearHeldInputs();
+    const handleVisibility = () => {
+      if (document.hidden) {
+        engine.clearHeldInputs();
+      }
+      engine.sound.handleAppVisibilityChange(document.hidden);
+    };
+    const handlePageHide = () => {
+      engine.clearHeldInputs();
+      engine.sound.handleAppVisibilityChange(true);
+    };
+    const handleFocus = () => {
+      engine.sound.handleAppVisibilityChange(false);
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
@@ -369,12 +412,18 @@ export default function App() {
 
     window.addEventListener('resize', handleResize);
     window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       engine.stopLoop();
@@ -608,16 +657,40 @@ export default function App() {
     );
   };
 
+  const handleNewGame = () => {
+    const resetSave = resetCampaignForNewGame(saveRef.current);
+    setSave(resetSave);
+    saveRef.current = resetSave;
+    engineRef.current?.setCoinsBalance(resetSave.coins);
+    engineRef.current?.setPlayerProgression(resetSave.playerLevel, resetSave.playerXp);
+    launchTutorialWith(resetSave.selectedCharacterId, resetSave.selectedBreathing);
+  };
+
+  const handleToggleMusicQuick = () => {
+    engineRef.current?.sound.unlock();
+    const cur = saveRef.current.audio;
+    const nextAudio: AudioSettings = {
+      ...cur,
+      muted: false,
+      musicEnabled: !(cur.musicEnabled && !cur.muted),
+    };
+    const updated = updateAudioSettings(saveRef.current, nextAudio);
+    setSave(updated);
+    engineRef.current?.applyAudioSettings(nextAudio);
+  };
+
   const handleSelectCharacter = (charId: string, breathing?: BreathingStyleId) => {
     const updated = selectCharacterAndBreathing(save, charId, breathing, true);
     setSave(updated);
     engineRef.current?.setCoinsBalance(updated.coins);
+    engineRef.current?.setPlayerProgression(updated.playerLevel, updated.playerXp);
   };
 
   const handleConfirmCharSelect = (charId: string, breathing: BreathingStyleId) => {
     const updated = selectCharacterAndBreathing(save, charId, breathing, true);
     setSave(updated);
     engineRef.current?.setCoinsBalance(updated.coins);
+    engineRef.current?.setPlayerProgression(updated.playerLevel, updated.playerXp);
     setModalStack((prev) => prev.filter((m) => m !== 'charSelect'));
     if (pendingAfterCharSelect) {
       const next = pendingAfterCharSelect;
@@ -657,18 +730,6 @@ export default function App() {
     const skin = getCharacterSkins(charId).find((s) => s.id === skinId);
     if (!skin) return { ok: false, message: 'Skin not found.' };
     const res = purchaseCharacterSkin(save, charId, skin.id, skin.name, skin.price);
-    if (res.ok) {
-      setSave(res.save);
-      engineRef.current?.setCoinsBalance(res.save.coins);
-      engineRef.current?.sound.unlock();
-      engineRef.current?.sound.playUpgradeChime();
-    }
-    return { ok: res.ok, message: res.message };
-  };
-
-  const handleBuyAwakening = (charId: string, tierId: AwakeningTierId) => {
-    const tier = AWAKENING_SPECS[tierId];
-    const res = purchaseAwakeningTier(save, charId, tierId, tier.name, tier.price);
     if (res.ok) {
       setSave(res.save);
       engineRef.current?.setCoinsBalance(res.save.coins);
@@ -784,6 +845,7 @@ export default function App() {
         <GameOverlays
           hud={hud}
           save={save}
+          onNewGame={handleNewGame}
           onContinueGame={handleContinueGame}
           onStartSurvival={handleStartSurvival}
           onOpenCampaign={() => pushModal('campaign')}
@@ -795,10 +857,11 @@ export default function App() {
           onOpenShop={() => pushModal('shop')}
           onOpenUpgrades={() => pushModal('upgrades')}
           onOpenDemonSkins={() => pushModal('demonSkins')}
-          onOpenStoryGallery={() => pushModal('storyGallery')}
           onStartTutorial={handleStartTutorial}
           onOpenEncyclopedia={() => pushModal('encyclopedia')}
           onOpenSettings={() => pushModal('settings')}
+          onExitGame={() => setExitPromptOpen(true)}
+          onToggleMusic={handleToggleMusicQuick}
           onQuickPlayStory={() => handleStartStoryLevel(save.highestUnlockedLevel)}
           onResume={() => engineRef.current?.togglePause()}
           onRestart={() => {
@@ -841,7 +904,6 @@ export default function App() {
           onUpgradeStat={handleUpgradeStat}
           onSelectSkin={handleSelectSkin}
           onBuySkin={handleBuySkin}
-          onBuyAwakening={handleBuyAwakening}
           onBuyUltimate={handleBuyUltimate}
           onEquipUltimate={handleEquipUltimate}
         />
@@ -853,31 +915,6 @@ export default function App() {
           onClose={popModal}
           onBuyDemonSkin={handleBuyDemonSkin}
           onSelectDemonSkin={handleSelectDemonSkin}
-        />
-      )}
-
-      {activeModal === 'storyGallery' && (
-        <StoryGalleryModal
-          save={save}
-          onClose={popModal}
-          onPlayCutscene={(csId) => {
-            clearModals();
-            const personalized = buildCutsceneForPlayer(
-              csId,
-              save.selectedCharacterId,
-              save.selectedBreathing
-            );
-            setActiveCutscene({
-              cutscene: personalized,
-              onDone: () => {
-                setSave((prev) => markCutsceneSeen(prev, csId));
-                setActiveCutscene(null);
-                if (engineRef.current?.phase === 'TITLE_MENU') {
-                  engineRef.current.setMenuMusicTheme('menu', save.selectedCharacterId);
-                }
-              },
-            });
-          }}
         />
       )}
 
@@ -921,24 +958,6 @@ export default function App() {
           onUpdateAudio={handleUpdateAudio}
           onUpdateGameplay={handleUpdateGameplay}
           onToggleSkipSeenCutscenes={handleToggleSkipSeenCutscenes}
-          onReplayPrologue={() => {
-            clearModals();
-            const campaignInfo = getCharacterCampaignInfo(save.selectedCharacterId);
-            const personalized = buildCutsceneForPlayer(
-              campaignInfo.prologueCutsceneId || 'cs_opening',
-              save.selectedCharacterId,
-              save.selectedBreathing
-            );
-            setActiveCutscene({
-              cutscene: personalized,
-              onDone: () => {
-                setActiveCutscene(null);
-                if (engineRef.current?.phase === 'TITLE_MENU') {
-                  engineRef.current.setMenuMusicTheme('menu', save.selectedCharacterId);
-                }
-              },
-            });
-          }}
         />
       )}
 
@@ -962,6 +981,35 @@ export default function App() {
           onComplete={activeCutscene.onDone}
           onSkip={activeCutscene.onDone}
         />
+      )}
+
+      {/* Official Startup Splash / Loading Screen */}
+      {showSplash && (
+        <div
+          onClick={() => {
+            engineRef.current?.sound.unlock();
+            setSplashFading(true);
+            setTimeout(() => setShowSplash(false), 260);
+          }}
+          className={`fixed inset-0 z-50 flex cursor-pointer flex-col items-center justify-center bg-[#03060f] transition-opacity duration-500 ${
+            splashFading ? 'opacity-0' : 'opacity-100'
+          }`}
+        >
+          <img
+            src="./assets/images/game-logo.png"
+            alt="Demon Slayers: Breath of the Abyss"
+            className="animate-logo-glow h-40 w-40 rounded-3xl object-contain sm:h-52 sm:w-52"
+          />
+          <h1 className="font-display mt-4 text-2xl font-extrabold tracking-widest text-white sm:text-3xl">
+            DEMON SLAYERS
+          </h1>
+          <p className="font-display mt-1 text-xs font-semibold tracking-[0.28em] text-sky-300 uppercase">
+            Breath of the Abyss
+          </p>
+          <p className="mt-4 animate-pulse text-xs font-medium tracking-wider text-slate-400">
+            Entering Final Selection… Tap anywhere
+          </p>
+        </div>
       )}
 
       {/* Hardware Back Accidental-Exit Protection Dialog on Root Main Menu */}

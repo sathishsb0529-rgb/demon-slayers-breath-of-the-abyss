@@ -769,6 +769,8 @@ export interface CutsceneDef {
 
 export interface AudioSettings {
   muted: boolean;
+  musicEnabled: boolean;
+  sfxEnabled: boolean;
   masterVolume: number; // 0..1
   musicVolume: number; // 0..1
   sfxVolume: number; // 0..1
@@ -817,6 +819,8 @@ export interface CharacterUpgrades {
 export interface CharacterProfile {
   characterId: string;
   coins: number;
+  playerLevel: number;
+  playerXp: number;
   highestUnlockedLevel: number;
   levelBestRanks: Record<number, 'S' | 'A' | 'B'>;
   seenCutscenes: string[];
@@ -841,6 +845,8 @@ export interface SurvivalStats {
 
 export interface SaveData {
   coins: number;
+  playerLevel: number;
+  playerXp: number;
   unlockedCharacters: string[];
   selectedCharacterId: string;
   selectedBreathing: BreathingStyleId;
@@ -932,6 +938,9 @@ export interface HudSnapshot {
 
   coins: number;
   coinsEarnedThisRun: number;
+  playerLevel: number;
+  playerXp: number;
+  playerXpToNext: number;
   lastRank: 'S' | 'A' | 'B' | null;
   comboCount: number;
   muted: boolean;

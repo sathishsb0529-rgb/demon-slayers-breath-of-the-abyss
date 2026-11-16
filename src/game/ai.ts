@@ -89,13 +89,14 @@ export class EnemyAI {
     if (specDb.phases >= 3 && hpRatio <= 0.35 && demon.bossPhase < 3) {
       demon.bossPhase = 3;
       sound.playTransformation();
-      sound.playDemonRoar();
+      sound.playDemonLaugh();
       sound.setBossPhaseIntensity(3);
       this.setTelegraph(`${template.displayName.split('·')[0].trim()} · PHASE III FRENZY!`, 1.5);
       particles.spawnFloatingText(demon.x, demon.y - 135, 'FINAL FRENZY PHASE III!', template.bdaColor, 1.35);
     } else if (specDb.phases >= 2 && hpRatio <= 0.65 && demon.bossPhase < 2) {
       demon.bossPhase = 2;
       sound.playTransformation();
+      sound.playDemonRoar();
       sound.setBossPhaseIntensity(2);
       this.setTelegraph(`${template.displayName.split('·')[0].trim()} · AWAKENED PHASE II`, 1.25);
       particles.spawnFloatingText(demon.x, demon.y - 135, 'AWAKENED PHASE II!', template.bdaColor, 1.25);
@@ -316,6 +317,9 @@ export class EnemyAI {
       this.bdaCooldown = 1.9;
       this.setTelegraph(specDb.ultimateText, 1.4);
       sound.playDemonAttackSound(specDb.sfxTheme, true);
+      if (isDoma || isAkaza || isMuzanTier || isKokushibo || isGyutaro) {
+        sound.playDemonLaugh();
+      }
       particles.spawnFloatingText(demon.x, demon.y - 135, specDb.ultimateText, template.bdaColor, 1.25);
 
       const projectiles = this.buildProjectiles(demon, template.bdaColor, template.bdaGlow, specDb, true);
@@ -512,24 +516,29 @@ export class EnemyAI {
   ): Omit<BdaProjectile, 'id'>[] {
     const kind = isUltimate ? specDb.ultimateKind : specDb.projectileKind;
     const phaseBonus = demon.bossPhase >= 3 ? 2 : demon.bossPhase >= 2 ? 1 : 0;
-    const count = isUltimate
-      ? Math.max(2, specDb.multiShotCount + phaseBonus)
-      : Math.max(1, specDb.multiShotCount + (demon.bossPhase >= 2 ? 1 : 0));
-    const speed = specDb.projectileSpeed * (isUltimate ? 1.15 : 1.0);
+    const isAirType = kind === 'compass_wave';
+    const count = isAirType
+      ? Math.max(isUltimate ? 4 : 2, specDb.multiShotCount + phaseBonus)
+      : isUltimate
+        ? Math.max(2, specDb.multiShotCount + phaseBonus)
+        : Math.max(1, specDb.multiShotCount + (demon.bossPhase >= 2 ? 1 : 0));
+    const speed = specDb.projectileSpeed * (isUltimate ? 1.15 : 1.0) * (isAirType ? 1.18 : 1.0);
     const dmg = Math.round((isUltimate ? 22 : 14) * demon.damageMult);
     const out: Omit<BdaProjectile, 'id'>[] = [];
 
     for (let i = 0; i < count; i++) {
-      const spreadOffset = count === 1 ? 0 : (i - (count - 1) * 0.5) * 76;
+      const spreadOffset = count === 1 ? 0 : (i - (count - 1) * 0.5) * (isAirType ? 34 : 76);
       const isSwampOrSpike = kind === 'ground_spike' || kind === 'swamp_pool';
       const isBuddhaOrDragon = kind === 'ice_buddha' || kind === 'wooden_dragon';
       out.push({
         ownerId: demon.id,
         ownerRole: 'demon',
-        x: demon.x + demon.facing * (44 + i * 16),
-        y: isSwampOrSpike ? demon.y - 6 : demon.y - 64 + spreadOffset * 0.22,
-        vx: demon.facing * speed * (1 + i * 0.05),
-        vy: kind === 'temari_ball' ? -260 - i * 50 : spreadOffset * 0.58,
+        x: demon.x + demon.facing * (44 + (isAirType ? i * 36 : i * 16)),
+        y: isSwampOrSpike
+          ? demon.y - 6
+          : demon.y - (isAirType ? 58 + (i % 2 === 0 ? -10 : 8) : 64) + spreadOffset * 0.22,
+        vx: demon.facing * speed * (1 + i * (isAirType ? 0.08 : 0.05)),
+        vy: kind === 'temari_ball' ? -260 - i * 50 : isAirType ? spreadOffset * 0.14 : spreadOffset * 0.58,
         radius: isBuddhaOrDragon ? 32 : isUltimate ? 21 : 15,
         damage: dmg,
         color,
