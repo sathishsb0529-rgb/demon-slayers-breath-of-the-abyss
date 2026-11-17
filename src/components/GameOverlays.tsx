@@ -16,13 +16,16 @@ import {
   Settings,
   ShoppingBag,
   Sparkles,
+  Target,
   Users,
   VolumeX,
 } from 'lucide-react';
 import { BREATHING_STYLES } from '../game/breathing';
 import { getCharacterCampaignInfo } from '../game/campaign';
 import { getCharacterById, SLAYER_CHARACTERS } from '../game/characters';
-import { HudSnapshot, SaveData } from '../game/types';
+import { DIFFICULTY_SCALING } from '../game/constants';
+import { ACHIEVEMENTS, MAX_TOTAL_XP } from '../game/save';
+import { CombatRank, HudSnapshot, SaveData } from '../game/types';
 
 interface GameOverlaysProps {
   hud: HudSnapshot;
@@ -35,6 +38,7 @@ interface GameOverlaysProps {
   onOpenShop: () => void;
   onOpenUpgrades: () => void;
   onOpenDemonSkins: () => void;
+  onOpenHub: () => void;
   onStartTutorial: () => void;
   onOpenEncyclopedia: () => void;
   onOpenSettings: () => void;
@@ -162,6 +166,7 @@ export function GameOverlays({
   onOpenShop,
   onOpenUpgrades,
   onOpenDemonSkins,
+  onOpenHub,
   onStartTutorial,
   onOpenEncyclopedia,
   onOpenSettings,
@@ -182,11 +187,18 @@ export function GameOverlays({
   const campaignInfo = getCharacterCampaignInfo(activeChar.id);
   const hasExistingProgress =
     save.tutorialCompleted || save.highestUnlockedLevel > 1 || save.totalDemonsDefeated > 0;
+  const claimableHubCount =
+    save.dailyMissions.filter((m) => !m.claimed && m.progress >= m.target).length +
+    ACHIEVEMENTS.filter(
+      (a) =>
+        !save.claimedAchievements.includes(a.id) &&
+        (save.playerStats?.[a.metric] ?? 0) >= a.target
+    ).length;
 
   if (hud.phase === 'TITLE_MENU') {
     const musicActive = save.audio.musicEnabled && !save.audio.muted;
     return (
-      <div className="absolute inset-0 z-30 flex flex-col items-center overflow-y-auto bg-[#03060f] px-4 py-3 text-center sm:py-4">
+      <div className="safe-area-hud absolute inset-0 z-30 flex flex-col items-center overflow-y-auto bg-[#03060f] px-4 py-3 text-center sm:py-4">
         {/* Official Animated Key Art Backdrop */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <img
@@ -318,12 +330,34 @@ export function GameOverlays({
             </button>
           </div>
 
+          {/* Corps Missions, Trials & Difficulty Hub Banner */}
+          <button
+            type="button"
+            onClick={onOpenHub}
+            className="mt-2.5 flex min-h-[44px] w-full max-w-2xl items-center justify-between gap-2 rounded-lg border border-cyan-400/55 bg-slate-950/85 px-3.5 py-2 text-xs font-bold text-cyan-100 shadow-lg backdrop-blur-sm transition-colors hover:border-cyan-300 hover:bg-slate-900"
+          >
+            <span className="flex items-center gap-2">
+              <Target className="h-4 w-4 text-cyan-300" />
+              <span>Missions, Trials &amp; Difficulty</span>
+            </span>
+            <span className="tabular-nums flex items-center gap-2 text-[11px]">
+              <span className="rounded border border-slate-700 bg-slate-900 px-2 py-0.5 text-amber-200">
+                {DIFFICULTY_SCALING[save.selectedDifficulty].label}
+              </span>
+              {claimableHubCount > 0 && (
+                <span className="rounded bg-amber-400 px-2 py-0.5 font-black text-slate-950">
+                  {claimableHubCount} Claimable
+                </span>
+              )}
+            </span>
+          </button>
+
           {/* Secondary Modes & Arsenal Strip */}
-          <div className="mt-2.5 grid w-full max-w-2xl grid-cols-3 gap-1.5 sm:grid-cols-6">
+          <div className="mt-2 grid w-full max-w-2xl grid-cols-3 gap-1.5 sm:grid-cols-6">
             <button
               type="button"
               onClick={onOpenUpgrades}
-              className="flex min-h-[38px] items-center justify-center gap-1 rounded-lg border border-amber-500/45 bg-slate-950/80 px-2 py-1.5 text-[11px] font-semibold text-amber-200 hover:border-amber-400 hover:bg-slate-900"
+              className="flex min-h-[44px] items-center justify-center gap-1 rounded-lg border border-amber-500/45 bg-slate-950/80 px-2 py-1.5 text-[11px] font-semibold text-amber-200 hover:border-amber-400 hover:bg-slate-900"
             >
               <ArrowUpCircle className="h-3.5 w-3.5 text-amber-300" />
               <span>Upgrades</span>
@@ -332,7 +366,7 @@ export function GameOverlays({
             <button
               type="button"
               onClick={onOpenShop}
-              className="flex min-h-[38px] items-center justify-center gap-1 rounded-lg border border-amber-500/45 bg-slate-950/80 px-2 py-1.5 text-[11px] font-semibold text-amber-200 hover:border-amber-400 hover:bg-slate-900"
+              className="flex min-h-[44px] items-center justify-center gap-1 rounded-lg border border-amber-500/45 bg-slate-950/80 px-2 py-1.5 text-[11px] font-semibold text-amber-200 hover:border-amber-400 hover:bg-slate-900"
             >
               <ShoppingBag className="h-3.5 w-3.5 text-amber-300" />
               <span>Roster ({save.unlockedCharacters.length}/{SLAYER_CHARACTERS.length})</span>
@@ -341,7 +375,7 @@ export function GameOverlays({
             <button
               type="button"
               onClick={onOpenDemonSkins}
-              className="flex min-h-[38px] items-center justify-center gap-1 rounded-lg border border-rose-500/45 bg-slate-950/80 px-2 py-1.5 text-[11px] font-semibold text-rose-200 hover:border-rose-400 hover:bg-slate-900"
+              className="flex min-h-[44px] items-center justify-center gap-1 rounded-lg border border-rose-500/45 bg-slate-950/80 px-2 py-1.5 text-[11px] font-semibold text-rose-200 hover:border-rose-400 hover:bg-slate-900"
             >
               <Palette className="h-3.5 w-3.5 text-rose-300" />
               <span>Demon Skins</span>
@@ -350,7 +384,7 @@ export function GameOverlays({
             <button
               type="button"
               onClick={onStartSurvival}
-              className="flex min-h-[38px] items-center justify-center gap-1 rounded-lg border border-fuchsia-400/50 bg-fuchsia-950/65 px-2 py-1.5 text-[11px] font-semibold text-fuchsia-100 hover:border-fuchsia-300 hover:bg-fuchsia-900/75"
+              className="flex min-h-[44px] items-center justify-center gap-1 rounded-lg border border-fuchsia-400/50 bg-fuchsia-950/65 px-2 py-1.5 text-[11px] font-semibold text-fuchsia-100 hover:border-fuchsia-300 hover:bg-fuchsia-900/75"
             >
               <Flame className="h-3.5 w-3.5 text-fuchsia-300" />
               <span>Survival W{save.survivalStats.highestWave}</span>
@@ -359,7 +393,7 @@ export function GameOverlays({
             <button
               type="button"
               onClick={onOpenEncyclopedia}
-              className="flex min-h-[38px] items-center justify-center gap-1 rounded-lg border border-rose-500/40 bg-slate-950/80 px-2 py-1.5 text-[11px] font-semibold text-rose-200 hover:border-rose-400 hover:bg-slate-900"
+              className="flex min-h-[44px] items-center justify-center gap-1 rounded-lg border border-rose-500/40 bg-slate-950/80 px-2 py-1.5 text-[11px] font-semibold text-rose-200 hover:border-rose-400 hover:bg-slate-900"
             >
               <BookOpen className="h-3.5 w-3.5 text-rose-400" />
               <span>60 Demons</span>
@@ -368,7 +402,7 @@ export function GameOverlays({
             <button
               type="button"
               onClick={onStartTutorial}
-              className="flex min-h-[38px] items-center justify-center gap-1 rounded-lg border border-slate-700/85 bg-slate-950/80 px-2 py-1.5 text-[11px] font-semibold text-slate-200 hover:border-sky-400 hover:bg-slate-900"
+              className="flex min-h-[44px] items-center justify-center gap-1 rounded-lg border border-slate-700/85 bg-slate-950/80 px-2 py-1.5 text-[11px] font-semibold text-slate-200 hover:border-sky-400 hover:bg-slate-900"
             >
               <Sparkles className="h-3.5 w-3.5 text-sky-300" />
               <span>Trial</span>
@@ -415,7 +449,7 @@ export function GameOverlays({
 
   if (hud.phase === 'PAUSED') {
     return (
-      <div className="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-950/75 px-4 py-4">
+      <div className="safe-area-modal absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-950/75 px-4 py-4">
         <div className="my-auto w-full max-w-sm rounded-xl border border-slate-700/90 bg-slate-900/95 p-5 text-center shadow-2xl sm:p-6">
           <img
             src="./assets/images/game-logo.png"
@@ -465,62 +499,149 @@ export function GameOverlays({
 
   const isVictory = hud.phase === 'VICTORY';
   const hasNextStory = isVictory && hud.mode === 'STORY' && hud.levelId < 50;
+  const rankBadgeStyle = (rank: CombatRank): string => {
+    switch (rank) {
+      case 'SSS':
+        return 'border-amber-300 bg-gradient-to-br from-amber-300 via-rose-400 to-cyan-300 text-slate-950 shadow-[0_0_24px_rgba(251,191,36,0.55)]';
+      case 'SS':
+        return 'border-amber-400 bg-amber-400/20 text-amber-300';
+      case 'S':
+        return 'border-sky-400 bg-sky-500/20 text-sky-300';
+      case 'A':
+        return 'border-emerald-400 bg-emerald-500/20 text-emerald-300';
+      default:
+        return 'border-slate-500 bg-slate-800 text-slate-200';
+    }
+  };
+  const xpPct = Math.min(100, Math.round((hud.totalPlayerXp / MAX_TOTAL_XP) * 100));
+  const breakdown = hud.scoreBreakdown;
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-950/75 px-4 py-4">
-      <div className="my-auto w-full max-w-md rounded-xl border border-slate-700/90 bg-slate-900/95 p-5 text-center shadow-2xl sm:p-8">
-        <h2
-          className={`font-display text-3xl font-extrabold tracking-widest sm:text-4xl ${
-            isVictory ? 'text-cyan-300' : 'text-rose-400'
-          }`}
-        >
-          {isVictory ? 'VICTORY' : 'DEFEAT'}
-        </h2>
-
-        <p className="mt-2 text-sm text-slate-300">
-          {hud.mode === 'TUTORIAL' && isVictory
-            ? 'You split the Giant Boulder! Story Level 1 is now unlocked.'
-            : hud.mode === 'SURVIVAL'
-              ? isVictory
-                ? 'All 20 Survival Waves conquered! Muzan’s Abyssal gauntlet falls!'
-                : `Survival ended at Wave ${hud.survivalWave ?? 1} / 20.`
-              : isVictory
-                ? `${hud.levelTitle} cleared!`
-                : `${hud.playerName} fell in battle.`}
-        </p>
-
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-4 border-y border-slate-800 py-3 text-xs text-slate-300">
-          {hud.lastRank && (
-            <div>
-              <span className="text-slate-500">Rank </span>
-              <span className="font-mono-num font-bold text-amber-300">{hud.lastRank}</span>
+    <div className="safe-area-modal absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-950/80 px-4 py-4">
+      <div className="my-auto w-full max-w-lg rounded-xl border border-slate-700/90 bg-slate-900/95 p-5 text-center shadow-2xl sm:p-6">
+        <div className="flex items-center justify-center gap-4">
+          <div>
+            <h2
+              className={`font-display text-3xl font-extrabold tracking-widest sm:text-4xl ${
+                isVictory ? 'text-cyan-300' : 'text-rose-400'
+              }`}
+            >
+              {isVictory ? 'VICTORY' : 'DEFEAT'}
+            </h2>
+            <p className="mt-1 text-xs text-slate-300 sm:text-sm">
+              {hud.mode === 'TUTORIAL' && isVictory
+                ? 'You split the Giant Boulder! Story Level 1 is now unlocked.'
+                : hud.mode === 'SURVIVAL'
+                  ? isVictory
+                    ? 'All 20 Survival Waves conquered! Muzan’s Abyssal gauntlet falls!'
+                    : `Survival ended at Wave ${hud.survivalWave ?? 1} / 20.`
+                  : isVictory
+                    ? `${hud.levelTitle} cleared!`
+                    : `${hud.playerName} fell in battle.`}
+            </p>
+          </div>
+          {isVictory && hud.lastRank && (
+            <div
+              className={`tabular-nums font-display flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl border-2 text-2xl font-black tracking-tight ${rankBadgeStyle(
+                hud.lastRank
+              )}`}
+            >
+              <span className="text-[9px] font-bold tracking-widest uppercase opacity-80">Rank</span>
+              <span>{hud.lastRank}</span>
             </div>
           )}
-          <div>
-            <span className="text-slate-500">Coins </span>
-            <span className="font-mono-num font-bold text-amber-300">
-              +{hud.coinsEarnedThisRun}
+        </div>
+
+        {/* Live Slayer XP Progression Bar */}
+        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/80 px-3.5 py-2.5 text-left">
+          <div className="tabular-nums flex items-center justify-between text-xs font-bold">
+            <span className="text-sky-300">Slayer Lv.{hud.playerLevel} / 50</span>
+            <span className="text-slate-300">
+              {hud.totalPlayerXp} / {MAX_TOTAL_XP} XP
             </span>
           </div>
-          <div>
-            <span className="text-slate-500">Time </span>
-            <span className="font-mono-num font-semibold text-slate-100">
-              {hud.matchTime.toFixed(1)}s
-            </span>
-          </div>
-          <div>
-            <span className="text-slate-500">Hits </span>
-            <span className="font-mono-num font-semibold text-slate-100">
-              {hud.comboCount}
-            </span>
-          </div>
-          <div>
-            <span className="text-slate-500">Knockdowns </span>
-            <span className="font-mono-num font-semibold text-sky-300">
-              {hud.ragdollHitsLanded}
-            </span>
+          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-sm bg-slate-800">
+            <div
+              className="h-full bg-gradient-to-r from-sky-500 to-cyan-300 transition-all"
+              style={{ width: `${xpPct}%` }}
+            />
           </div>
         </div>
+
+        {/* Detailed Score Breakdown */}
+        {isVictory && breakdown ? (
+          <div className="mt-3.5 rounded-lg border border-slate-800 bg-slate-950/65 p-3 text-xs">
+            <div className="tabular-nums grid grid-cols-2 gap-x-4 gap-y-1 text-left text-slate-300">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Base Reward</span>
+                <span className="font-semibold text-amber-200">+{breakdown.baseCoins}c / +{breakdown.baseXp} XP</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Rank Bonus</span>
+                <span className="font-semibold text-amber-300">+{breakdown.rankBonusCoins}c</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Perfect Dodges</span>
+                <span className="font-semibold text-sky-300">+{breakdown.dodgeBonusCoins}c</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">No Damage</span>
+                <span className="font-semibold text-emerald-300">+{breakdown.noDamageBonusCoins}c</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Breathing Finisher</span>
+                <span className="font-semibold text-cyan-300">+{breakdown.finisherBonusCoins}c</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Bonus Objective</span>
+                <span className="font-semibold text-emerald-300">
+                  +{breakdown.objectiveBonusCoins}c / +{breakdown.objectiveBonusXp} XP
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Chests &amp; Caches</span>
+                <span className="font-semibold text-amber-200">+{breakdown.chestCoins}c</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Time / Max Hits</span>
+                <span className="font-semibold text-slate-100">
+                  {hud.matchTime.toFixed(1)}s · {hud.comboCount}x
+                </span>
+              </div>
+            </div>
+            <div className="tabular-nums mt-2 flex items-center justify-between border-t border-slate-800 pt-2 text-xs font-extrabold">
+              <span className="text-slate-200">Total Earned</span>
+              <span className="text-amber-300">
+                +{breakdown.totalCoins} Coins · +{breakdown.totalXp} XP
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="tabular-nums mt-4 flex flex-wrap items-center justify-center gap-4 border-y border-slate-800 py-3 text-xs text-slate-300">
+            {hud.lastRank && (
+              <div>
+                <span className="text-slate-500">Rank </span>
+                <span className="font-bold text-amber-300">{hud.lastRank}</span>
+              </div>
+            )}
+            <div>
+              <span className="text-slate-500">Coins </span>
+              <span className="font-bold text-amber-300">+{hud.coinsEarnedThisRun}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Time </span>
+              <span className="font-semibold text-slate-100">{hud.matchTime.toFixed(1)}s</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Hits </span>
+              <span className="font-semibold text-slate-100">{hud.comboCount}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Knockdowns </span>
+              <span className="font-semibold text-sky-300">{hud.ragdollHitsLanded}</span>
+            </div>
+          </div>
+        )}
 
         <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
           {hasNextStory ? (

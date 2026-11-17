@@ -16,6 +16,7 @@ interface SettingsModalProps {
   returnLabel?: string;
   onClose: () => void;
   onOpenCustomizeControls: () => void;
+  onReplayTutorial?: () => void;
   onUpdateAudio: (audio: AudioSettings) => void;
   onUpdateGameplay: (gameplay: GameplaySettings) => void;
   onToggleSkipSeenCutscenes: (skip: boolean) => void;
@@ -75,6 +76,7 @@ export function SettingsModal({
   returnLabel = 'Back',
   onClose,
   onOpenCustomizeControls,
+  onReplayTutorial,
   onUpdateAudio,
   onUpdateGameplay,
   onToggleSkipSeenCutscenes,
@@ -113,7 +115,7 @@ export function SettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-2.5 sm:p-5">
+    <div className="safe-area-modal fixed inset-0 z-40 flex items-center justify-center bg-slate-950/90 sm:p-5">
       <div className="flex max-h-[94dvh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-700/90 bg-slate-900 shadow-2xl">
         {/* Sticky Header with Visible Top-Left Back Button */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-3.5 py-2.5 sm:px-5 sm:py-3">
@@ -157,7 +159,7 @@ export function SettingsModal({
               <div>
                 <p className="text-sm font-semibold text-white">Customize Touch Controls</p>
                 <p className="text-xs text-slate-400">
-                  Drag, resize & preview all 12 battle buttons (
+                  Drag, resize & preview all {TOUCH_CONTROL_ORDER.length} battle buttons (
                   {hasCustomLayout ? 'Custom layout saved' : 'Default layout active'})
                 </p>
               </div>
@@ -355,6 +357,24 @@ export function SettingsModal({
                 onUpdateAudio({ ...audio, subtitlesEnabled: !audio.subtitlesEnabled })
               }
             />
+
+            {onReplayTutorial && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/70 px-3.5 py-2.5 sm:px-4 sm:py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white">Mt. Sagiri Boulder Tutorial</p>
+                  <p className="text-xs text-slate-400">
+                    Replay the 10-step sword & Breathing basics trial anytime
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onReplayTutorial}
+                  className="min-h-[40px] shrink-0 rounded-lg border border-amber-500/55 bg-amber-950/45 px-3.5 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-900/55"
+                >
+                  Replay Tutorial
+                </button>
+              </div>
+            )}
           </section>
 
           <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-800 pt-3">

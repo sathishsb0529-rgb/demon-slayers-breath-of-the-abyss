@@ -951,14 +951,58 @@ export function renderFighter(
     ctx.restore();
   }
 
+  // Shadow Demon obsidian shadow tendrils swirling behind body
+  if (v.shadowAura) {
+    ctx.save();
+    for (let s = 0; s < 4; s++) {
+      const ang = fighter.animTime * 2.4 + (s * Math.PI) / 2;
+      const sx = pose.chest.x + Math.cos(ang) * 22 * v.scale;
+      const sy = pose.chest.y + Math.sin(ang * 1.3) * 16 * v.scale;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.45)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, 14 * v.scale, 7 * v.scale, ang, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Boss Phase Escalation Ground Ring (Phases II / III / IV)
+  if (fighter.role === 'demon' && (fighter.bossPhase ?? 1) >= 2) {
+    const bp = fighter.bossPhase ?? 1;
+    ctx.save();
+    ctx.strokeStyle =
+      bp >= 4
+        ? 'rgba(244, 63, 94, 0.72)'
+        : bp === 3
+          ? 'rgba(249, 115, 22, 0.58)'
+          : 'rgba(168, 85, 247, 0.46)';
+    ctx.lineWidth = bp >= 4 ? 3.2 : 2.2;
+    const pulse = (52 + bp * 5 + Math.sin(fighter.animTime * 7) * 4) * v.scale;
+    ctx.beginPath();
+    ctx.ellipse(pose.pelvis.x, Math.min(GROUND_Y + 2, fighter.y + 2), pulse, 15, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // Telegraph aura on Demon Windup / BDA Cast
   if (fighter.role === 'demon' && (fighter.state === 'ATTACK_WINDUP' || fighter.state === 'BDA_CAST')) {
     ctx.save();
+    const dangerR = (46 + (options?.showWeakPointReticle ? 10 : 0)) * v.scale;
     ctx.beginPath();
-    ctx.arc(pose.chest.x, pose.chest.y, 46 * v.scale, 0, Math.PI * 2);
+    ctx.arc(pose.chest.x, pose.chest.y, dangerR, 0, Math.PI * 2);
     ctx.fillStyle =
-      fighter.state === 'BDA_CAST' ? 'rgba(192, 132, 252, 0.28)' : 'rgba(244, 63, 94, 0.25)';
+      fighter.state === 'BDA_CAST' ? 'rgba(192, 132, 252, 0.28)' : 'rgba(244, 63, 94, 0.28)';
     ctx.fill();
+    if (options?.showWeakPointReticle) {
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2.6;
+      ctx.setLineDash([7, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.restore();
   }
 
@@ -1198,6 +1242,89 @@ export function renderFighter(
     ctx.moveTo(pose.chest.x - 5 * v.scale, pose.chest.y);
     ctx.lineTo(pose.chest.x + 6 * v.scale, pose.pelvis.y + 2);
     ctx.stroke();
+  }
+
+  // Tank Demon Bone/Iron Carapace Armor Plates
+  if (v.armorPlates) {
+    ctx.save();
+    ctx.fillStyle = '#334155';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.8;
+    // Chest plate
+    ctx.beginPath();
+    ctx.moveTo(pose.chest.x - 12 * v.scale, pose.chest.y - 6 * v.scale);
+    ctx.lineTo(pose.chest.x + 12 * v.scale, pose.chest.y - 6 * v.scale);
+    ctx.lineTo(pose.chest.x + 9 * v.scale, pose.pelvis.y - 6 * v.scale);
+    ctx.lineTo(pose.chest.x - 9 * v.scale, pose.pelvis.y - 6 * v.scale);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Shoulder pauldrons
+    for (const sh of [pose.lShoulder, pose.rShoulder]) {
+      ctx.beginPath();
+      ctx.arc(sh.x, sh.y - 2 * v.scale, 8.5 * v.scale, Math.PI, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Poison / Blood / Boss Demon Glowing Veins
+  if (v.veinGlowColor) {
+    ctx.save();
+    ctx.strokeStyle = v.veinGlowColor;
+    ctx.lineWidth = 1.7;
+    ctx.globalAlpha = 0.72 + Math.sin(fighter.animTime * 6) * 0.2;
+    ctx.beginPath();
+    ctx.moveTo(pose.chest.x - 5 * v.scale, pose.chest.y - 4 * v.scale);
+    ctx.lineTo(pose.chest.x + 4 * v.scale, pose.pelvis.y);
+    ctx.moveTo(pose.rShoulder.x, pose.rShoulder.y);
+    ctx.lineTo(pose.rElbow.x, pose.rElbow.y);
+    ctx.moveTo(pose.lShoulder.x, pose.lShoulder.y);
+    ctx.lineTo(pose.lElbow.x, pose.lElbow.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Regeneration Demon Rotating Emerald Rune Seal
+  if (v.regenRunes) {
+    ctx.save();
+    ctx.translate(pose.chest.x, pose.chest.y);
+    ctx.rotate(fighter.animTime * 1.4);
+    ctx.strokeStyle = 'rgba(52, 211, 153, 0.78)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, 26 * v.scale, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let r = 0; r < 4; r++) {
+      const a = (r * Math.PI) / 2;
+      ctx.fillStyle = '#34d399';
+      ctx.fillRect(Math.cos(a) * 24 * v.scale - 2.5, Math.sin(a) * 24 * v.scale - 2.5, 5, 5);
+    }
+    ctx.restore();
+  }
+
+  // Ice Demon Orbiting Frost Crystals
+  if (v.frostCrystals) {
+    ctx.save();
+    for (let c = 0; c < 4; c++) {
+      const a = fighter.animTime * 2.1 + (c * Math.PI) / 2;
+      const cx = pose.chest.x + Math.cos(a) * 28 * v.scale;
+      const cy = pose.chest.y + Math.sin(a) * 14 * v.scale;
+      ctx.fillStyle = '#bae6fd';
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 6 * v.scale);
+      ctx.lineTo(cx + 4 * v.scale, cy);
+      ctx.lineTo(cx, cy + 6 * v.scale);
+      ctx.lineTo(cx - 4 * v.scale, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // Akaza giant crimson/pink prayer beads on ankles & wrists
@@ -1611,6 +1738,20 @@ export function renderFighter(
     ctx.lineWidth = 2.4;
     ctx.beginPath();
     ctx.arc(pose.chest.x, pose.chest.y, 29 * v.scale, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Active Regeneration / Boss Phase Shield Barrier
+  if ((fighter.shieldTimer ?? 0) > 0) {
+    ctx.save();
+    const sPulse = (34 + Math.sin(fighter.animTime * 12) * 2.5) * v.scale;
+    ctx.fillStyle = 'rgba(52, 211, 153, 0.14)';
+    ctx.strokeStyle = 'rgba(52, 211, 153, 0.85)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(pose.chest.x, pose.chest.y, sPulse, 0, Math.PI * 2);
+    ctx.fill();
     ctx.stroke();
     ctx.restore();
   }

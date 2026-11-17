@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ChevronLeft,
   ChevronRight,
+  Eye,
   Flame,
   Lock,
   Shield,
@@ -31,6 +32,23 @@ interface TouchButtonProps {
   style?: React.CSSProperties;
   className?: string;
   children: React.ReactNode;
+}
+
+function readSafeInsets(): { left: number; right: number; top: number; bottom: number } {
+  if (typeof window === 'undefined' || !document.documentElement) {
+    return { left: 0, right: 0, top: 0, bottom: 0 };
+  }
+  const cs = getComputedStyle(document.documentElement);
+  const parsePx = (v: string) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? Math.max(0, n) : 0;
+  };
+  return {
+    left: parsePx(cs.getPropertyValue('--sal')),
+    right: parsePx(cs.getPropertyValue('--sar')),
+    top: parsePx(cs.getPropertyValue('--sat')),
+    bottom: parsePx(cs.getPropertyValue('--sab')),
+  };
 }
 
 function TouchButton({
@@ -87,6 +105,7 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
   const [viewport, setViewport] = useState(() => ({
     w: typeof window !== 'undefined' ? window.innerWidth : 800,
     h: typeof window !== 'undefined' ? window.innerHeight : 360,
+    insets: readSafeInsets(),
   }));
   const [formPage, setFormPage] = useState(0);
 
@@ -96,7 +115,7 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
 
   useEffect(() => {
     const syncViewport = () => {
-      setViewport({ w: window.innerWidth, h: window.innerHeight });
+      setViewport({ w: window.innerWidth, h: window.innerHeight, insets: readSafeInsets() });
     };
     syncViewport();
     window.addEventListener('resize', syncViewport);
@@ -119,7 +138,7 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
       : 100;
 
   const boxStyle = (id: keyof TouchControlsLayout): React.CSSProperties => {
-    const rect = getControlPixelRect(id, controlsLayout[id], viewport.w, viewport.h);
+    const rect = getControlPixelRect(id, controlsLayout[id], viewport.w, viewport.h, viewport.insets);
     return {
       left: `${rect.cx - rect.half}px`,
       top: `${rect.cy - rect.half}px`,
@@ -129,15 +148,20 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
   };
 
   // Anchor compact Page Switcher directly above breathing1..4 cluster
-  const b1Rect = getControlPixelRect('breathing1', controlsLayout.breathing1, viewport.w, viewport.h);
-  const b4Rect = getControlPixelRect('breathing4', controlsLayout.breathing4, viewport.w, viewport.h);
+  const b1Rect = getControlPixelRect('breathing1', controlsLayout.breathing1, viewport.w, viewport.h, viewport.insets);
+  const b4Rect = getControlPixelRect('breathing4', controlsLayout.breathing4, viewport.w, viewport.h, viewport.insets);
   const pagerLeft = Math.min(b1Rect.cx - b1Rect.half, b4Rect.cx - b4Rect.half);
   const pagerRight = Math.max(b1Rect.cx + b1Rect.half, b4Rect.cx + b4Rect.half);
-  const pagerTop = Math.max(54, Math.min(b1Rect.cy - b1Rect.half, b4Rect.cy - b4Rect.half) - 28);
+  const pagerTop = Math.max(54 + viewport.insets.top, Math.min(b1Rect.cy - b1Rect.half, b4Rect.cy - b4Rect.half) - 28);
 
   const awkReady = !hud.awakeningActive && hud.awakeningMeter >= 100 && hud.awakeningCooldown <= 0.1;
   const ultSpec = ULTIMATE_SPECS[hud.equippedUltimate];
   const ultReady = hud.ultimateCooldown <= 0.05 && hud.playerEnergy >= ultSpec.energyCost;
+
+  const stwAvailable = Boolean(hud.transparentWorldAvailable);
+  const stwActive = Boolean(hud.transparentWorldActive);
+  const stwCd = hud.transparentWorldCooldown ?? 0;
+  const stwReady = stwAvailable && !stwActive && stwCd <= 0.05;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden">
@@ -185,7 +209,7 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </button>
-          <span className="font-mono-num tracking-tight text-slate-300">
+          <span className="font-mono-num tabular-nums tracking-tight text-slate-300">
             Forms {safePage + 1}/{totalPages}
           </span>
           <button
@@ -236,7 +260,7 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
             {form.isUnknown ? (
               <Lock className="mt-0.5 h-3 w-3 text-slate-600" />
             ) : (
-              <span className="font-mono-num mt-0.5 text-[9px] font-semibold leading-none">
+              <span className="font-mono-num tabular-nums mt-0.5 text-[9px] font-semibold leading-none">
                 {cd > 0.05 ? `${cd.toFixed(0)}s` : `${cost}%`}
               </span>
             )}
@@ -251,7 +275,7 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
         onPressStart={() => engine?.triggerAwakening()}
         className={`flex flex-col items-center justify-center overflow-hidden rounded-xl border shadow-md ${
           hud.awakeningActive
-            ? 'border-amber-300 bg-amber-950/90 text-amber-200 animate-pulse'
+            ? 'border-amber-300 bg-amber-950/90 text-amber-200 ring-2 ring-amber-400/50'
             : awkReady
               ? 'border-amber-400 bg-amber-900/85 text-white'
               : 'border-slate-700/80 bg-slate-950/80 text-slate-400'
@@ -262,10 +286,37 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
           style={{ height: `${Math.min(100, Math.round(hud.awakeningMeter))}%` }}
         />
         <Sparkles className={`relative h-[36%] w-[36%] ${awkReady || hud.awakeningActive ? 'text-amber-300' : 'text-slate-500'}`} />
-        <span className="font-mono-num relative mt-0.5 text-[8px] font-bold leading-none">
+        <span className="font-mono-num tabular-nums relative mt-0.5 text-[8px] font-bold leading-none">
           {hud.awakeningActive
             ? `${hud.awakeningTimer.toFixed(0)}s`
             : `${Math.floor(hud.awakeningMeter)}%`}
+        </span>
+      </TouchButton>
+
+      {/* Transparent World (Upper Moon & Demon King Bosses Only) */}
+      <TouchButton
+        label="Transparent World (Upper Moon / Bosses Only)"
+        style={boxStyle('transparentWorld')}
+        onPressStart={() => engine?.triggerTransparentWorld()}
+        className={`flex flex-col items-center justify-center overflow-hidden rounded-xl border shadow-md ${
+          stwActive
+            ? 'border-cyan-300 bg-cyan-950/90 text-cyan-100 ring-2 ring-cyan-400/55'
+            : stwReady
+              ? 'border-cyan-400/90 bg-slate-950/85 text-cyan-200'
+              : stwAvailable
+                ? 'border-slate-700/80 bg-slate-950/80 text-slate-400'
+                : 'border-slate-800/80 bg-slate-950/55 text-slate-600'
+        }`}
+      >
+        <Eye className={`h-[34%] w-[34%] ${stwActive || stwReady ? 'text-cyan-300' : 'text-slate-500'}`} />
+        <span className="font-mono-num tabular-nums mt-0.5 text-[8px] font-bold leading-none">
+          {stwActive
+            ? `${(hud.transparentWorldTimer ?? 0).toFixed(1)}s`
+            : stwCd > 0.05
+              ? `${stwCd.toFixed(0)}s`
+              : stwAvailable
+                ? 'STW'
+                : 'Boss'}
         </span>
       </TouchButton>
 
@@ -281,7 +332,7 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
         }`}
       >
         <Flame className={`h-[36%] w-[36%] ${ultReady ? 'text-fuchsia-300' : 'text-slate-500'}`} />
-        <span className="font-mono-num mt-0.5 text-[8px] font-bold leading-none">
+        <span className="font-mono-num tabular-nums mt-0.5 text-[8px] font-bold leading-none">
           {hud.ultimateCooldown > 0.05 ? `${hud.ultimateCooldown.toFixed(0)}s` : `${ultSpec.energyCost}%`}
         </span>
       </TouchButton>
@@ -338,7 +389,7 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
         <Swords
           className={`relative h-[38%] w-[38%] ${heavyCooling ? 'text-slate-500' : 'text-rose-300'}`}
         />
-        <span className="font-mono-num relative mt-0.5 text-[9px] font-bold leading-none">
+        <span className="font-mono-num tabular-nums relative mt-0.5 text-[9px] font-bold leading-none">
           {heavyCooling ? `${hud.heavyCooldown.toFixed(1)}s` : 'Heavy'}
         </span>
       </TouchButton>

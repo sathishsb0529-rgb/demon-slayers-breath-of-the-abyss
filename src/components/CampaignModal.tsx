@@ -49,6 +49,11 @@ const PRACTICE_MAPS: MapId[] = [
   'swordsmith_village',
   'hashira_grounds',
   'infinity_castle',
+  'burning_village',
+  'haunted_temple',
+  'underground_tunnel',
+  'poisonous_forest',
+  'final_fortress',
 ];
 
 const PRACTICE_DEMONS: Array<{ id: DemonArchetype; label: string }> = [
@@ -94,7 +99,7 @@ export function CampaignModal({
   const levelUnlocked = selectedLevel.id <= save.highestUnlockedLevel;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/85 p-3 sm:p-6">
+    <div className="safe-area-modal fixed inset-0 z-40 flex items-center justify-center bg-slate-950/85 sm:p-6">
       <div className="flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-700/90 bg-slate-900 shadow-2xl">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-3.5 py-2.5 sm:px-6 sm:py-3">
@@ -133,7 +138,7 @@ export function CampaignModal({
                 tab === 'practice' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
               }`}
             >
-              Free Battle (11 Maps)
+              Free Battle ({PRACTICE_MAPS.length} Maps)
             </button>
           </div>
         </div>
@@ -250,10 +255,26 @@ export function CampaignModal({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Reward</span>
-                      <span className="font-mono-num font-bold text-amber-300">
-                        +{selectedLevel.rewardCoins} Coins
+                      <span className="font-mono-num tabular-nums font-bold text-amber-300">
+                        +{selectedLevel.rewardCoins} Coins · +{selectedLevel.rewardXp ?? (selectedLevel.isBossLevel ? 55 : 30)} XP
                       </span>
                     </div>
+                    {selectedLevel.hasUndergroundDungeon && (
+                      <div className="flex justify-between gap-2 text-cyan-300">
+                        <span className="text-slate-400">Route Feature</span>
+                        <span className="text-right font-semibold">
+                          Dark Underground Dungeon (Key & Gate)
+                        </span>
+                      </div>
+                    )}
+                    {selectedLevel.optionalObjective && (
+                      <div className="flex justify-between gap-2 text-emerald-300">
+                        <span className="text-slate-400">Bonus Objective</span>
+                        <span className="text-right font-semibold">
+                          {selectedLevel.optionalObjective.label} (+{selectedLevel.optionalObjective.bonusCoins}c)
+                        </span>
+                      </div>
+                    )}
                     {(selectedLevel.allyIds ?? selectedLevel.allyHashiraIds) && (
                       <div className="flex items-center justify-between gap-2 text-emerald-300">
                         <span className="flex items-center gap-1 text-slate-400">
@@ -295,7 +316,7 @@ export function CampaignModal({
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 sm:p-6 md:grid-cols-3">
             <div>
               <h3 className="text-xs font-bold tracking-wider text-slate-400 uppercase">
-                1. Select Arena (11 Maps)
+                1. Select Arena ({PRACTICE_MAPS.length} Maps)
               </h3>
               <div className="mt-2 grid grid-cols-1 gap-1.5">
                 {PRACTICE_MAPS.map((m) => (

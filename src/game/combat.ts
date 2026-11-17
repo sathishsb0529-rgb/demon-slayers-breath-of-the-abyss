@@ -12,6 +12,7 @@ export interface CombatStepOutcome {
   landed: boolean;
   blocked: boolean;
   clashed: boolean;
+  perfectDodged?: boolean;
 }
 
 export function rectsOverlap(a: Rect, b: Rect): boolean {
@@ -165,6 +166,7 @@ export function resolveAttackHit(
     landed: false,
     blocked: false,
     clashed: false,
+    perfectDodged: false,
   };
 
   if (defender.hp <= 0 || defender.state === 'DEFEATED') return result;
@@ -198,8 +200,11 @@ export function resolveAttackHit(
   // Dodge i-frames avoid damage cleanly and grant counterattack window
   if (defender.state === 'DODGE' || (defender.invulnTimer > 0 && defender.state !== 'RAGDOLL')) {
     if (defender.role === 'player' && defender.counterWindowTimer <= 0) {
-      defender.counterWindowTimer = defender.characterId === 'kanao' ? 1.05 : 0.72;
-      particles.spawnFloatingText(defender.x, defender.y - 105, 'DODGE COUNTER!', '#5eead4', 0.95);
+      const baseCounter = defender.characterId === 'kanao' ? 1.05 : 0.72;
+      defender.counterWindowTimer = baseCounter + (defender.counterWindowBonus ?? 0);
+      defender.perfectDodgeStreak = (defender.perfectDodgeStreak ?? 0) + 1;
+      particles.spawnFloatingText(defender.x, defender.y - 105, 'PERFECT DODGE!', '#5eead4', 1.0);
+      result.perfectDodged = true;
     }
     return result;
   }
@@ -222,7 +227,8 @@ export function resolveAttackHit(
     defender.parryFlashTimer = 0.22;
 
     if (perfectParry) {
-      defender.counterWindowTimer = defender.characterId === 'kanao' ? 1.15 : 0.85;
+      defender.counterWindowTimer =
+        (defender.characterId === 'kanao' ? 1.15 : 0.85) + (defender.counterWindowBonus ?? 0);
       defender.energy = Math.min(defender.maxEnergy, defender.energy + 12);
       if (defender.role === 'player' && !defender.awakeningActive) {
         defender.awakeningMeter = Math.min(100, defender.awakeningMeter + 9.5);
@@ -253,21 +259,24 @@ export function resolveAttackHit(
     return result;
   }
 
-  // Clean hit with defense mitigation + Awakening bonuses
-  const defReduction = Math.min(
+  // Clean hit with defense mitigation + Shield + Awakening bonuses
+  const baseDefReduction = Math.min(
     0.58,
     defender.role === 'demon' && defender.demonArchetype
       ? DEMON_TEMPLATES[defender.demonArchetype].defense
       : defender.defenseReduction ?? (defender.characterId === 'genya' ? 0.12 : 0)
   );
+  const shieldActive = (defender.shieldTimer ?? 0) > 0;
+  const defReduction = shieldActive ? Math.min(0.76, baseDefReduction + 0.36) : baseDefReduction;
   const hasTransparent =
-    attacker.awakeningActive &&
-    (attacker.awakeningTier === 'transparent_world' || attacker.awakeningTier === 'transcendent');
+    attacker.transparentWorldActive ||
+    (attacker.awakeningActive &&
+      (attacker.awakeningTier === 'transparent_world' || attacker.awakeningTier === 'transcendent'));
   const hasRedBlade =
     attacker.awakeningActive &&
     (attacker.awakeningTier === 'red_blade' || attacker.awakeningTier === 'transcendent');
 
-  const critMult = hasTransparent ? 1.22 : 1.0;
+  const critMult = hasTransparent ? 1.24 : 1.0;
   const finalDamage = Math.max(
     1,
     Math.round(spec.damage * attacker.damageMult * critMult * (1 - defReduction))
@@ -282,6 +291,9 @@ export function resolveAttackHit(
   if (attacker.role === 'player' && !attacker.awakeningActive) {
     const meterGain = spec.kind === 'ULTIMATE_ATTACK' ? 0 : spec.triggersRagdoll ? 8.5 : 5.5;
     attacker.awakeningMeter = Math.min(100, attacker.awakeningMeter + meterGain);
+  }
+  if (shieldActive) {
+    particles.spawnFloatingText(defender.x, defender.y - defender.height - 32, 'SHIELDED', '#34d399', 0.8);
   }
 
   if (spec.poisonDps && spec.poisonDps > 0) {

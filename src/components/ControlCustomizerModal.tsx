@@ -42,6 +42,7 @@ const ROMAN: Record<TouchControlId, string> = {
   breathing3: 'F3',
   breathing4: 'F4',
   awakening: 'Awkn',
+  transparentWorld: 'STW',
   ultimate: 'Ult',
 };
 
@@ -91,6 +92,13 @@ function renderControlGlyph(id: TouchControlId) {
         <>
           <Zap className="h-[36%] w-[36%] text-amber-300" />
           <span className="mt-0.5 text-[8px] font-bold leading-none text-amber-200">Awaken</span>
+        </>
+      );
+    case 'transparentWorld':
+      return (
+        <>
+          <Eye className="h-[34%] w-[34%] text-cyan-300" />
+          <span className="mt-0.5 text-[8px] font-bold leading-none text-cyan-200">STW</span>
         </>
       );
     case 'ultimate':
@@ -255,7 +263,7 @@ export function ControlCustomizerModal({
       />
 
       {/* Top Action Bar (fits compactly on 720px+ landscape phones) */}
-      <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/90 bg-slate-950/92 px-3 py-2 sm:px-5">
+      <div className="safe-area-hud relative z-20 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/90 bg-slate-950/92 pb-2 sm:px-5">
         <div className="flex items-center gap-2">
           <button
             type="button"

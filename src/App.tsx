@@ -16,6 +16,7 @@ import { GameOverlays } from './components/GameOverlays';
 import { MobileControls } from './components/MobileControls';
 import { RosterShopModal } from './components/RosterShopModal';
 import { SettingsModal } from './components/SettingsModal';
+import { SlayerHubModal } from './components/SlayerHubModal';
 import { SoundEngine } from './game/audio';
 import { AWAKENING_SPECS, ULTIMATE_SPECS } from './game/breathing';
 import {
@@ -28,9 +29,14 @@ import { getCharacterSkins, getDemonSkins } from './game/characters';
 import { HEAVY_ATTACK_COOLDOWN } from './game/constants';
 import { GameEngine } from './game/engine';
 import {
+  applyRunStatisticsAndMissions,
   awardExplorationCoins,
+  claimAchievement,
+  claimDailyMission,
   equipUltimate,
   getCharacterProfile,
+  getTotalXpForProfile,
+  getXpForNextLevel,
   loadSaveData,
   markCutsceneSeen,
   purchaseCharacter,
@@ -40,15 +46,18 @@ import {
   recordFreeBattleReward,
   recordLevelVictory,
   recordSurvivalProgress,
+  recordTrainingOrSecretClear,
   recordTutorialCompleted,
   resetCampaignForNewGame,
   selectCharacterAndBreathing,
   selectCharacterSkin,
   selectDemonSkin,
+  setDifficultyMode,
   updateAudioSettings,
   updateControlsLayout,
   updateGameplaySettings,
   upgradeCharacterStat,
+  upgradeSwordStat,
   writeSaveData,
 } from './game/save';
 import {
@@ -57,10 +66,12 @@ import {
   CharacterUpgrades,
   CutsceneDef,
   DemonArchetype,
+  DifficultyMode,
   GameplaySettings,
   HudSnapshot,
   MapId,
   SaveData,
+  SwordUpgrades,
   TouchControlsLayout,
   UltimateId,
 } from './game/types';
@@ -81,6 +92,7 @@ type ModalScreen =
   | 'shop'
   | 'demonSkins'
   | 'encyclopedia'
+  | 'hub'
   | 'settings'
   | 'controls';
 
@@ -90,6 +102,7 @@ const INITIAL_HUD: HudSnapshot = {
   levelId: 1,
   levelTitle: 'First Night Beneath Bamboo',
   mapId: 'bamboo_forest',
+  difficultyMode: 'standard',
   playerName: 'Tanjiro Kamado',
   playerHp: 138,
   playerMaxHp: 138,
@@ -111,6 +124,10 @@ const INITIAL_HUD: HudSnapshot = {
   equippedUltimate: 'eternal_sun',
   ultimateCooldown: 0,
   maxUltimateCooldown: 12,
+  transparentWorldActive: false,
+  transparentWorldTimer: 0,
+  transparentWorldCooldown: 0,
+  transparentWorldAvailable: false,
   enemyName: 'Feral Night Demon',
   enemySubtitle: 'Lesser Demon',
   enemyHp: 135,
@@ -146,8 +163,10 @@ const INITIAL_HUD: HudSnapshot = {
   coinsEarnedThisRun: 0,
   playerLevel: 1,
   playerXp: 0,
-  playerXpToNext: 80,
+  playerXpToNext: 16,
+  totalPlayerXp: 0,
   lastRank: null,
+  scoreBreakdown: null,
   comboCount: 0,
   muted: false,
   matchTime: 0,
@@ -166,12 +185,15 @@ export default function App() {
   const saveRef = useRef<SaveData>(save);
   saveRef.current = save;
 
-  const [hud, setHud] = useState<HudSnapshot>({
+  const [hud, setHud] = useState<HudSnapshot>(() => ({
     ...INITIAL_HUD,
+    difficultyMode: save.selectedDifficulty,
     coins: save.coins,
     playerLevel: save.playerLevel,
     playerXp: save.playerXp,
-  });
+    playerXpToNext: getXpForNextLevel(save.playerLevel),
+    totalPlayerXp: getTotalXpForProfile(save.playerLevel, save.playerXp),
+  }));
   const [engineReady, setEngineReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [splashFading, setSplashFading] = useState(false);
@@ -249,6 +271,8 @@ export default function App() {
         .filter((id) => !prevUnlocks.has(id))
         .map((id) => AWAKENING_SPECS[id].name);
       engine.setCoinsBalance(updated.coins);
+      engine.setDifficultyMode(updated.selectedDifficulty);
+      engine.setSwordUpgrades(nextProf.swordUpgrades);
       engine.setPlayerProgression(updated.playerLevel, updated.playerXp, newlyUnlockedNames);
     };
 
@@ -264,24 +288,54 @@ export default function App() {
       },
       onExploreCachePickup: (_cacheId, coins) => {
         const prev = saveRef.current;
-        const updated = awardExplorationCoins(prev, coins);
+        const withCoins = awardExplorationCoins(prev, coins);
+        const updated = applyRunStatisticsAndMissions(withCoins, { chestsFound: 1 });
         setSave(updated);
         syncProgressionToEngine(engine, prev, updated);
       },
       onSurvivalComplete: (wave, won, coinsEarned, demonsDefeated) => {
         const prev = saveRef.current;
-        const updated = recordSurvivalProgress(prev, wave, won, coinsEarned, demonsDefeated);
+        const withSurv = recordSurvivalProgress(prev, wave, won, coinsEarned, demonsDefeated);
+        const updated = applyRunStatisticsAndMissions(withSurv, { demonsDefeated });
         setSave(updated);
         syncProgressionToEngine(engine, prev, updated);
       },
-      onLevelComplete: (levelId, rank, coinsEarned, kills) => {
+      onLevelComplete: (levelId, rank, coinsEarned, kills, xpEarned, _breakdown, extra) => {
         const prev = saveRef.current;
-        let updated: SaveData;
-        if (levelId > 0) {
-          updated = recordLevelVictory(prev, levelId, rank, coinsEarned, kills);
+        let baseSave: SaveData;
+        if (extra.trainingId) {
+          baseSave = recordTrainingOrSecretClear(prev, {
+            trainingId: extra.trainingId,
+            coinsEarned,
+            xpEarned,
+          });
+        } else if (extra.secretBossId) {
+          baseSave = recordTrainingOrSecretClear(prev, {
+            secretBossId: extra.secretBossId,
+            coinsEarned,
+            xpEarned,
+          });
+        } else if (levelId > 0) {
+          baseSave = recordLevelVictory(prev, levelId, rank, coinsEarned, kills, xpEarned);
         } else {
-          updated = recordFreeBattleReward(prev, coinsEarned, kills).save;
+          baseSave = recordFreeBattleReward(prev, coinsEarned, kills).save;
         }
+
+        const updated = applyRunStatisticsAndMissions(baseSave, {
+          demonsDefeated: extra.demonsDefeated,
+          bossesDefeated: extra.bossesDefeated,
+          levelsCleared: levelId > 0 ? 1 : 0,
+          perfectDodges: extra.perfectDodges,
+          noDamageWins: extra.noDamage ? 1 : 0,
+          breathingFinishers: extra.breathingFinishers,
+          chestsFound: extra.chestsFound,
+          sssRanks: rank === 'SSS' ? 1 : 0,
+          trainingCompleted: extra.trainingId ? 1 : 0,
+          secretBossesCleared: extra.secretBossId ? 1 : 0,
+          totalDamageDealt: extra.totalDamageDealt,
+          killedArchetypes: extra.killedArchetypes,
+        });
+
         setSave(updated);
         syncProgressionToEngine(engine, prev, updated);
 
@@ -308,7 +362,10 @@ export default function App() {
         }
       },
     });
+    const initProf = getCharacterProfile(saveRef.current, saveRef.current.selectedCharacterId);
     engine.setCoinsBalance(saveRef.current.coins);
+    engine.setDifficultyMode(saveRef.current.selectedDifficulty);
+    engine.setSwordUpgrades(initProf.swordUpgrades);
     engine.setPlayerProgression(saveRef.current.playerLevel, saveRef.current.playerXp);
     engine.setEquippedDemonSkins(saveRef.current.equippedDemonSkins);
     engine.applyAudioSettings(saveRef.current.audio);
@@ -374,6 +431,8 @@ export default function App() {
         engine.triggerAction('dodge');
       } else if (code === 'KeyQ') {
         engine.triggerAwakening();
+      } else if (code === 'KeyT') {
+        engine.triggerTransparentWorld();
       } else if (code === 'KeyU') {
         engine.triggerUltimate();
       } else if (code === 'Digit1' || code === 'KeyE') {
@@ -554,6 +613,8 @@ export default function App() {
     clearModals();
     const campaignInfo = getCharacterCampaignInfo(charId);
     const prof = getCharacterProfile(saveRef.current, charId);
+    engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
+    engineRef.current?.setDifficultyMode(saveRef.current.selectedDifficulty);
     maybePlayCutscene(campaignInfo.prologueCutsceneId || 'cs_opening', () => {
       engineRef.current?.startTutorial(
         charId,
@@ -572,6 +633,8 @@ export default function App() {
     const campaignInfo = getCharacterCampaignInfo(charId);
     const levelDef = campaign.find((l) => l.id === levelId) ?? campaign[0];
     const prof = getCharacterProfile(saveRef.current, charId);
+    engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
+    engineRef.current?.setDifficultyMode(saveRef.current.selectedDifficulty);
     const preCutsceneId =
       levelDef.cutsceneId ?? (levelId === 1 ? campaignInfo.prologueCutsceneId : undefined);
     maybePlayCutscene(preCutsceneId, () => {
@@ -617,6 +680,8 @@ export default function App() {
     clearModals();
     const charId = saveRef.current.selectedCharacterId;
     const prof = getCharacterProfile(saveRef.current, charId);
+    engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
+    engineRef.current?.setDifficultyMode(saveRef.current.selectedDifficulty);
     engineRef.current?.startSurvivalMode(
       'infinity_castle',
       charId,
@@ -644,6 +709,8 @@ export default function App() {
   ) => {
     clearModals();
     const prof = getCharacterProfile(saveRef.current, saveRef.current.selectedCharacterId);
+    engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
+    engineRef.current?.setDifficultyMode(saveRef.current.selectedDifficulty);
     engineRef.current?.startPracticeMatch(
       mapId,
       demon,
@@ -657,11 +724,49 @@ export default function App() {
     );
   };
 
+  const handleStartTraining = (trainingId: string) => {
+    clearModals();
+    const charId = saveRef.current.selectedCharacterId;
+    const prof = getCharacterProfile(saveRef.current, charId);
+    engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
+    engineRef.current?.setDifficultyMode(saveRef.current.selectedDifficulty);
+    engineRef.current?.startTrainingChallenge(
+      trainingId,
+      charId,
+      saveRef.current.selectedBreathing,
+      prof.upgrades,
+      prof.selectedSkinId,
+      prof.unlockedAwakenings,
+      prof.equippedUltimate,
+      saveRef.current.equippedDemonSkins
+    );
+  };
+
+  const handleStartSecretBoss = (secretBossId: string) => {
+    clearModals();
+    const charId = saveRef.current.selectedCharacterId;
+    const prof = getCharacterProfile(saveRef.current, charId);
+    engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
+    engineRef.current?.setDifficultyMode(saveRef.current.selectedDifficulty);
+    engineRef.current?.startSecretBoss(
+      secretBossId,
+      charId,
+      saveRef.current.selectedBreathing,
+      prof.upgrades,
+      prof.selectedSkinId,
+      prof.unlockedAwakenings,
+      prof.equippedUltimate,
+      saveRef.current.equippedDemonSkins
+    );
+  };
+
   const handleNewGame = () => {
     const resetSave = resetCampaignForNewGame(saveRef.current);
     setSave(resetSave);
     saveRef.current = resetSave;
+    const prof = getCharacterProfile(resetSave, resetSave.selectedCharacterId);
     engineRef.current?.setCoinsBalance(resetSave.coins);
+    engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
     engineRef.current?.setPlayerProgression(resetSave.playerLevel, resetSave.playerXp);
     launchTutorialWith(resetSave.selectedCharacterId, resetSave.selectedBreathing);
   };
@@ -682,14 +787,18 @@ export default function App() {
   const handleSelectCharacter = (charId: string, breathing?: BreathingStyleId) => {
     const updated = selectCharacterAndBreathing(save, charId, breathing, true);
     setSave(updated);
+    const prof = getCharacterProfile(updated, updated.selectedCharacterId);
     engineRef.current?.setCoinsBalance(updated.coins);
+    engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
     engineRef.current?.setPlayerProgression(updated.playerLevel, updated.playerXp);
   };
 
   const handleConfirmCharSelect = (charId: string, breathing: BreathingStyleId) => {
     const updated = selectCharacterAndBreathing(save, charId, breathing, true);
     setSave(updated);
+    const prof = getCharacterProfile(updated, updated.selectedCharacterId);
     engineRef.current?.setCoinsBalance(updated.coins);
+    engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
     engineRef.current?.setPlayerProgression(updated.playerLevel, updated.playerXp);
     setModalStack((prev) => prev.filter((m) => m !== 'charSelect'));
     if (pendingAfterCharSelect) {
@@ -705,7 +814,10 @@ export default function App() {
     const res = purchaseCharacter(save, charId);
     if (res.ok) {
       setSave(res.save);
+      const prof = getCharacterProfile(res.save, res.save.selectedCharacterId);
       engineRef.current?.setCoinsBalance(res.save.coins);
+      engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
+      engineRef.current?.setPlayerProgression(res.save.playerLevel, res.save.playerXp);
     }
     return { ok: res.ok, message: res.message };
   };
@@ -715,6 +827,49 @@ export default function App() {
     if (res.ok) {
       setSave(res.save);
       engineRef.current?.setCoinsBalance(res.save.coins);
+      engineRef.current?.sound.unlock();
+      engineRef.current?.sound.playUpgradeChime();
+    }
+    return { ok: res.ok, message: res.message };
+  };
+
+  const handleUpgradeSwordStat = (charId: string, stat: keyof SwordUpgrades) => {
+    const res = upgradeSwordStat(save, charId, stat);
+    if (res.ok) {
+      setSave(res.save);
+      const prof = getCharacterProfile(res.save, charId);
+      engineRef.current?.setCoinsBalance(res.save.coins);
+      engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
+      engineRef.current?.sound.unlock();
+      engineRef.current?.sound.playUpgradeChime();
+    }
+    return { ok: res.ok, message: res.message };
+  };
+
+  const handleSetDifficulty = (mode: DifficultyMode) => {
+    const updated = setDifficultyMode(save, mode);
+    setSave(updated);
+    engineRef.current?.setDifficultyMode(mode);
+  };
+
+  const handleClaimMission = (missionId: string) => {
+    const res = claimDailyMission(save, missionId);
+    if (res.ok) {
+      setSave(res.save);
+      engineRef.current?.setCoinsBalance(res.save.coins);
+      engineRef.current?.setPlayerProgression(res.save.playerLevel, res.save.playerXp);
+      engineRef.current?.sound.unlock();
+      engineRef.current?.sound.playUpgradeChime();
+    }
+    return { ok: res.ok, message: res.message };
+  };
+
+  const handleClaimAchievement = (achId: string) => {
+    const res = claimAchievement(save, achId);
+    if (res.ok) {
+      setSave(res.save);
+      engineRef.current?.setCoinsBalance(res.save.coins);
+      engineRef.current?.setPlayerProgression(res.save.playerLevel, res.save.playerXp);
       engineRef.current?.sound.unlock();
       engineRef.current?.sound.playUpgradeChime();
     }
@@ -827,7 +982,10 @@ export default function App() {
           onToggleMute={handleToggleMuteHud}
           onTriggerForm={(idx) => engineRef.current?.triggerBreathingForm(idx)}
           onTriggerAwakening={() => engineRef.current?.triggerAwakening()}
+          onTriggerTransparentWorld={() => engineRef.current?.triggerTransparentWorld()}
           onTriggerUltimate={() => engineRef.current?.triggerUltimate()}
+          onAdvanceTutorial={() => engineRef.current?.advanceTutorialStep()}
+          onSkipTutorial={() => engineRef.current?.skipTutorial()}
         />
       )}
 
@@ -857,6 +1015,7 @@ export default function App() {
           onOpenShop={() => pushModal('shop')}
           onOpenUpgrades={() => pushModal('upgrades')}
           onOpenDemonSkins={() => pushModal('demonSkins')}
+          onOpenHub={() => pushModal('hub')}
           onStartTutorial={handleStartTutorial}
           onOpenEncyclopedia={() => pushModal('encyclopedia')}
           onOpenSettings={() => pushModal('settings')}
@@ -866,6 +1025,8 @@ export default function App() {
           onResume={() => engineRef.current?.togglePause()}
           onRestart={() => {
             const prof = getCharacterProfile(save, save.selectedCharacterId);
+            engineRef.current?.setSwordUpgrades(prof.swordUpgrades);
+            engineRef.current?.setDifficultyMode(save.selectedDifficulty);
             engineRef.current?.restartCurrentBattle(
               prof.upgrades,
               prof.selectedSkinId,
@@ -902,6 +1063,7 @@ export default function App() {
           save={save}
           onClose={popModal}
           onUpgradeStat={handleUpgradeStat}
+          onUpgradeSwordStat={handleUpgradeSwordStat}
           onSelectSkin={handleSelectSkin}
           onBuySkin={handleBuySkin}
           onBuyUltimate={handleBuyUltimate}
@@ -942,10 +1104,23 @@ export default function App() {
 
       {activeModal === 'encyclopedia' && (
         <DemonEncyclopediaModal
+          demonKillCounts={save.demonKillCounts}
           onClose={popModal}
           onChallengeDemon={(mapId, demon) =>
             handleStartPractice(mapId, demon, save.selectedBreathing)
           }
+        />
+      )}
+
+      {activeModal === 'hub' && (
+        <SlayerHubModal
+          save={save}
+          onClose={popModal}
+          onClaimMission={handleClaimMission}
+          onClaimAchievement={handleClaimAchievement}
+          onSetDifficulty={handleSetDifficulty}
+          onStartTraining={handleStartTraining}
+          onStartSecretBoss={handleStartSecretBoss}
         />
       )}
 
@@ -955,6 +1130,10 @@ export default function App() {
           returnLabel={hud.phase === 'PAUSED' ? 'Pause Menu' : 'Main Menu'}
           onClose={popModal}
           onOpenCustomizeControls={() => pushModal('controls')}
+          onReplayTutorial={() => {
+            clearModals();
+            handleStartTutorial();
+          }}
           onUpdateAudio={handleUpdateAudio}
           onUpdateGameplay={handleUpdateGameplay}
           onToggleSkipSeenCutscenes={handleToggleSkipSeenCutscenes}
@@ -1006,7 +1185,7 @@ export default function App() {
           <p className="font-display mt-1 text-xs font-semibold tracking-[0.28em] text-sky-300 uppercase">
             Breath of the Abyss
           </p>
-          <p className="mt-4 animate-pulse text-xs font-medium tracking-wider text-slate-400">
+          <p className="mt-4 text-xs font-medium tracking-wider text-slate-400">
             Entering Final Selection… Tap anywhere
           </p>
         </div>

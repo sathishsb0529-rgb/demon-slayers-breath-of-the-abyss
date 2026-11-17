@@ -4,6 +4,7 @@ import { DemonTemplate, ENCYCLOPEDIA_DEMONS } from '../game/demons';
 import { DemonArchetype, DemonDifficultyTier, MapId } from '../game/types';
 
 interface DemonEncyclopediaModalProps {
+  demonKillCounts?: Record<string, number>;
   onClose: () => void;
   onChallengeDemon: (mapId: MapId, demon: DemonArchetype) => void;
 }
@@ -178,6 +179,7 @@ function DemonPortraitSvg({ demon }: { demon: DemonTemplate }) {
 }
 
 export function DemonEncyclopediaModal({
+  demonKillCounts = {},
   onClose,
   onChallengeDemon,
 }: DemonEncyclopediaModalProps) {
@@ -206,7 +208,7 @@ export function DemonEncyclopediaModal({
     ENCYCLOPEDIA_DEMONS[0];
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-3 sm:p-6">
+    <div className="safe-area-modal fixed inset-0 z-40 flex items-center justify-center bg-slate-950/90 sm:p-6">
       <div className="flex max-h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-rose-900/60 bg-slate-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3.5 py-2.5 sm:px-6 sm:py-3">
@@ -271,6 +273,7 @@ export function DemonEncyclopediaModal({
             {filteredDemons.map((d) => {
               const rosterNum = ENCYCLOPEDIA_DEMONS.indexOf(d) + 1;
               const active = d.archetype === current.archetype;
+              const kills = demonKillCounts[d.archetype] ?? 0;
               return (
                 <button
                   key={d.archetype}
@@ -283,8 +286,8 @@ export function DemonEncyclopediaModal({
                   }`}
                 >
                   <div className="flex w-full items-center justify-between gap-1">
-                    <span className="font-mono-num truncate text-[10px] font-bold text-rose-300">
-                      #{String(rosterNum).padStart(2, '0')} · {d.ability.difficultyTier}
+                    <span className="font-mono-num tabular-nums truncate text-[10px] font-bold text-rose-300">
+                      #{String(rosterNum).padStart(2, '0')} · {d.ability.demonClass.toUpperCase()}
                     </span>
                     <span
                       className="h-2.5 w-2.5 shrink-0"
@@ -294,8 +297,8 @@ export function DemonEncyclopediaModal({
                   <span className="mt-1 line-clamp-1 text-xs font-bold text-white">
                     {d.displayName}
                   </span>
-                  <span className="font-mono-num mt-0.5 line-clamp-1 text-[10px] text-slate-400">
-                    {d.baseHp} HP · {d.rankLabel}
+                  <span className="font-mono-num tabular-nums mt-0.5 line-clamp-1 text-[10px] text-slate-400">
+                    {d.baseHp} HP · Slain: {kills}
                   </span>
                 </button>
               );
@@ -328,26 +331,26 @@ export function DemonEncyclopediaModal({
               <div className="mt-5 grid grid-cols-2 gap-3 border-y border-slate-800 py-3.5 text-xs">
                 <div>
                   <span className="text-slate-400">Base Health</span>
-                  <p className="font-mono-num mt-0.5 text-sm font-bold text-rose-300">
+                  <p className="font-mono-num tabular-nums mt-0.5 text-sm font-bold text-rose-300">
                     {current.baseHp} HP
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Attack Power</span>
-                  <p className="font-mono-num mt-0.5 text-sm font-bold text-amber-300">
-                    {(current.damageMult * 100).toFixed(0)}%
+                  <span className="text-slate-400">Demon Class</span>
+                  <p className="mt-0.5 text-sm font-bold text-amber-300 uppercase">
+                    {current.ability.demonClass}
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Movement Speed</span>
-                  <p className="font-mono-num mt-0.5 text-sm font-bold text-sky-300">
-                    {(current.speedMult * 100).toFixed(0)}%
+                  <span className="text-slate-400">Attack / Speed</span>
+                  <p className="font-mono-num tabular-nums mt-0.5 text-sm font-bold text-sky-300">
+                    {(current.damageMult * 100).toFixed(0)}% / {(current.speedMult * 100).toFixed(0)}%
                   </p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Regen / Armor</span>
-                  <p className="font-mono-num mt-0.5 text-sm font-bold text-emerald-300">
-                    {current.regenPerSec}/s · {(current.defense * 100).toFixed(0)}%
+                  <span className="text-slate-400">Bestiary Slain</span>
+                  <p className="font-mono-num tabular-nums mt-0.5 text-sm font-bold text-emerald-300">
+                    {demonKillCounts[current.archetype] ?? 0} Defeated
                   </p>
                 </div>
               </div>

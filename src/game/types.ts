@@ -28,6 +28,22 @@ export type BreathingStyleId =
   | 'flower'
   | 'moon';
 
+export type CombatRank = 'SSS' | 'SS' | 'S' | 'A' | 'B' | 'C' | 'D';
+
+export type DifficultyMode = 'standard' | 'hard' | 'nightmare' | 'abyssal';
+
+export type DemonClassId =
+  | 'basic'
+  | 'fast'
+  | 'tank'
+  | 'poison'
+  | 'regeneration'
+  | 'shadow'
+  | 'blood'
+  | 'ice'
+  | 'elite'
+  | 'boss';
+
 export type MapId =
   | 'bamboo_forest'
   | 'mountain_training'
@@ -39,7 +55,12 @@ export type MapId =
   | 'entertainment_district'
   | 'swordsmith_village'
   | 'hashira_grounds'
-  | 'infinity_castle';
+  | 'infinity_castle'
+  | 'burning_village'
+  | 'haunted_temple'
+  | 'underground_tunnel'
+  | 'poisonous_forest'
+  | 'final_fortress';
 
 export type WeaponStyle =
   | 'katana'
@@ -436,6 +457,12 @@ export interface FighterVisualProfile {
   haoriPattern?: 'checkered' | 'triangles' | 'flame' | 'butterfly' | 'half_half' | 'stripes' | 'mist_clouds' | 'spider_web' | 'flames_akaza';
   renderStyle?: 'anime' | 'stick_nodes';
   skinId?: string;
+  demonClass?: DemonClassId;
+  armorPlates?: boolean;
+  veinGlowColor?: string;
+  regenRunes?: boolean;
+  shadowAura?: boolean;
+  frostCrystals?: boolean;
 }
 
 export interface Fighter {
@@ -445,6 +472,7 @@ export interface Fighter {
   role: FighterRole;
   characterId?: string;
   demonArchetype?: DemonArchetype;
+  demonClass?: DemonClassId;
   visual: FighterVisualProfile;
   breathingStyle: BreathingStyleId;
   damageMult: number;
@@ -498,9 +526,13 @@ export interface Fighter {
   poisonDps: number;
   chillTimer: number;
   regenTimer: number;
-  bossPhase: 1 | 2 | 3;
+  bossPhase: 1 | 2 | 3 | 4;
+  shieldTimer?: number;
+  dodgeIFrameBonus?: number;
+  counterWindowBonus?: number;
+  perfectDodgeStreak?: number;
 
-  // Demon Slayer Awakening & Ultimate Mechanics
+  // Demon Slayer Awakening, Transparent World & Ultimate Mechanics
   awakeningMeter: number;
   awakeningActive: boolean;
   awakeningTimer: number;
@@ -509,6 +541,9 @@ export interface Fighter {
   unlockedAwakenings: AwakeningTierId[];
   equippedUltimate: UltimateId;
   ultimateCooldown: number;
+  transparentWorldActive?: boolean;
+  transparentWorldTimer?: number;
+  transparentWorldCooldown?: number;
   redBladeBurnTimer: number;
   consecutiveHitsTaken: number;
   consecutiveHitTimer: number;
@@ -530,13 +565,15 @@ export interface ArenaPlatform {
   y: number;
   w: number;
   h: number;
-  kind: 'wooden' | 'bridge' | 'stone' | 'tatami' | 'stair';
+  kind: 'wooden' | 'bridge' | 'stone' | 'tatami' | 'stair' | 'collapsing_bridge';
   baseX: number;
   baseY: number;
   moveAmpX?: number;
   moveAmpY?: number;
   moveSpeed?: number;
   phase?: number;
+  collapseState?: 'intact' | 'shaking' | 'collapsed';
+  collapseTimer?: number;
 }
 
 export interface ArenaObstacle {
@@ -545,12 +582,59 @@ export interface ArenaObstacle {
   y: number;
   w: number;
   h: number;
-  kind: 'rock' | 'fence' | 'crate' | 'pillar' | 'tree_trunk' | 'shoji_wall';
+  kind: 'rock' | 'fence' | 'crate' | 'pillar' | 'tree_trunk' | 'shoji_wall' | 'wooden_barrier' | 'locked_door';
   solid: boolean;
   destructible: boolean;
   hp: number;
   maxHp: number;
   lastHitSwingId: number;
+  requiresKey?: boolean;
+  unlocked?: boolean;
+}
+
+export type ArenaHazardKind =
+  | 'falling_rock'
+  | 'fire_trap'
+  | 'poison_pool'
+  | 'spike_trap'
+  | 'pit_hazard'
+  | 'ice_patch'
+  | 'blood_trap';
+
+export interface ArenaHazard {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: ArenaHazardKind;
+  damage: number;
+  timer: number;
+  cycleDuration: number;
+  active: boolean;
+  telegraphing: boolean;
+  rockY?: number;
+  rockVy?: number;
+  hitCooldown: number;
+}
+
+export interface ArenaDungeonItem {
+  id: string;
+  x: number;
+  y: number;
+  kind: 'dungeon_key' | 'secret_chest' | 'lantern_brazier';
+  collected: boolean;
+  coins?: number;
+  label?: string;
+}
+
+export interface ArenaAmbushTrigger {
+  id: string;
+  triggerX: number;
+  triggered: boolean;
+  archetype: DemonArchetype;
+  name: string;
+  subtitle: string;
 }
 
 export interface ArenaWaterZone {
@@ -580,7 +664,9 @@ export interface ArenaDecorItem {
     | 'shoji_portal'
     | 'bridge_rail'
     | 'forge_furnace'
-    | 'wisteria_tree';
+    | 'wisteria_tree'
+    | 'burning_rafter'
+    | 'hanging_cage';
   tint?: string;
 }
 
@@ -589,18 +675,20 @@ export interface MapZone {
   name: string;
   startX: number;
   endX: number;
-  biomeHint: 'forest' | 'village' | 'river' | 'bridge' | 'cave' | 'temple' | 'mountain' | 'battlefield' | 'castle_hall' | 'castle_chasm' | 'castle_stairs' | 'castle_throne';
+  biomeHint: 'forest' | 'village' | 'river' | 'bridge' | 'cave' | 'temple' | 'mountain' | 'battlefield' | 'castle_hall' | 'castle_chasm' | 'castle_stairs' | 'castle_throne' | 'dungeon';
+  isDarkZone?: boolean;
 }
 
 export interface ArenaExploreCache {
   id: string;
   x: number;
   y: number;
-  kind: 'coin_chest' | 'wisteria_cache' | 'spirit_shrine';
+  kind: 'coin_chest' | 'wisteria_cache' | 'spirit_shrine' | 'secret_chest';
   coins: number;
   energy: number;
   hp: number;
   collected: boolean;
+  hiddenBehindObstacleId?: string;
 }
 
 export interface BdaProjectile {
@@ -692,6 +780,7 @@ export interface InputState {
   dodgePressed: boolean;
   formPressed: number;
   awakeningPressed?: boolean;
+  transparentWorldPressed?: boolean;
   ultimatePressed?: boolean;
 }
 
@@ -718,8 +807,16 @@ export interface StoryLevelDef {
   mapId: MapId;
   enemies: StoryEnemySpawn[];
   rewardCoins: number;
+  rewardXp?: number;
   difficulty: 'Normal' | 'Hard' | 'Hashira' | 'Upper Moon' | 'INSANE';
   isBossLevel: boolean;
+  hasUndergroundDungeon?: boolean;
+  optionalObjective?: {
+    id: 'no_damage' | 'perfect_dodges' | 'breathing_finisher' | 'secret_chest' | 'fast_clear';
+    label: string;
+    bonusCoins: number;
+    bonusXp: number;
+  };
   allyHashiraIds?: string[];
   allyIds?: string[];
   cutsceneId?: string;
@@ -799,6 +896,7 @@ export type TouchControlId =
   | 'breathing3'
   | 'breathing4'
   | 'awakening'
+  | 'transparentWorld'
   | 'ultimate';
 
 export interface TouchControlItemConfig {
@@ -816,13 +914,90 @@ export interface CharacterUpgrades {
   breathing: number; // +1.4 Energy Regen/s & +4% Speed per level (0..5)
 }
 
+export interface SwordUpgrades {
+  edge: number;     // +7% Katana slash & crit damage per level (0..5)
+  alloy: number;    // +10% Breathing Form & poise break per level (0..5)
+  tsuba: number;    // +0.08s Parry/Counter window & +5% defense per level (0..5)
+  scabbard: number; // -6% Heavy/Form/Ult cooldowns per level (0..5)
+}
+
+export interface LevelMilestoneDef {
+  level: number;
+  title: string;
+  description: string;
+  effectSummary: string;
+}
+
+export interface DailyMissionState {
+  id: string;
+  title: string;
+  description: string;
+  target: number;
+  progress: number;
+  rewardCoins: number;
+  rewardXp: number;
+  claimed: boolean;
+  metric: 'demons_defeated' | 'levels_cleared' | 'perfect_dodges' | 'breathing_finishers' | 'chests_found' | 'bosses_defeated';
+}
+
+export interface AchievementDef {
+  id: string;
+  title: string;
+  description: string;
+  target: number;
+  rewardCoins: number;
+  rewardXp: number;
+  metric: keyof PlayerStatistics;
+}
+
+export interface PlayerStatistics {
+  demonsDefeated: number;
+  bossesDefeated: number;
+  levelsCleared: number;
+  perfectDodges: number;
+  noDamageWins: number;
+  breathingFinishers: number;
+  chestsFound: number;
+  sssRanks: number;
+  trainingCompleted: number;
+  secretBossesCleared: number;
+  totalDamageDealt: number;
+}
+
+export interface TrainingChallengeDef {
+  id: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  mapId: MapId;
+  enemyArchetype: DemonArchetype;
+  enemyName: string;
+  rewardCoins: number;
+  rewardXp: number;
+  ruleTag: 'perfect_dodge_trial' | 'parry_mastery' | 'boss_phase_drill' | 'form_chain';
+}
+
+export interface SecretBossDef {
+  id: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  mapId: MapId;
+  unlockRequirementLabel: string;
+  minLevel: number;
+  minPlayerLevel: number;
+  enemy: StoryEnemySpawn;
+  rewardCoins: number;
+  rewardXp: number;
+}
+
 export interface CharacterProfile {
   characterId: string;
   coins: number;
   playerLevel: number;
   playerXp: number;
   highestUnlockedLevel: number;
-  levelBestRanks: Record<number, 'S' | 'A' | 'B'>;
+  levelBestRanks: Record<number, CombatRank>;
   seenCutscenes: string[];
   tutorialCompleted: boolean;
   selectedBreathing: BreathingStyleId;
@@ -832,8 +1007,11 @@ export interface CharacterProfile {
   unlockedUltimates: UltimateId[];
   equippedUltimate: UltimateId;
   upgrades: CharacterUpgrades;
+  swordUpgrades: SwordUpgrades;
   totalDemonsDefeated: number;
   storyChoices: Record<string, string>;
+  completedTrainingIds: string[];
+  clearedSecretBossIds: string[];
 }
 
 export interface SurvivalStats {
@@ -853,7 +1031,7 @@ export interface SaveData {
   hasChosenStarter: boolean;
   tutorialCompleted: boolean;
   highestUnlockedLevel: number;
-  levelBestRanks: Record<number, 'S' | 'A' | 'B'>;
+  levelBestRanks: Record<number, CombatRank>;
   seenCutscenes: string[];
   skipSeenCutscenes: boolean;
   audio: AudioSettings;
@@ -864,6 +1042,26 @@ export interface SaveData {
   unlockedDemonSkins: Record<string, string[]>;
   equippedDemonSkins: Record<string, string>;
   survivalStats: SurvivalStats;
+  selectedDifficulty: DifficultyMode;
+  dailyMissionDate: string;
+  dailyMissions: DailyMissionState[];
+  claimedAchievements: string[];
+  demonKillCounts: Record<string, number>;
+  playerStats: PlayerStatistics;
+}
+
+export interface ScoreBreakdown {
+  baseCoins: number;
+  baseXp: number;
+  rankBonusCoins: number;
+  dodgeBonusCoins: number;
+  noDamageBonusCoins: number;
+  finisherBonusCoins: number;
+  objectiveBonusCoins: number;
+  objectiveBonusXp: number;
+  chestCoins: number;
+  totalCoins: number;
+  totalXp: number;
 }
 
 export interface HudSnapshot {
@@ -872,6 +1070,7 @@ export interface HudSnapshot {
   levelId: number;
   levelTitle: string;
   mapId: MapId;
+  difficultyMode: DifficultyMode;
   playerName: string;
   playerHp: number;
   playerMaxHp: number;
@@ -896,6 +1095,9 @@ export interface HudSnapshot {
   maxUltimateCooldown: number;
   redBladeActive?: boolean;
   transparentWorldActive?: boolean;
+  transparentWorldTimer?: number;
+  transparentWorldCooldown?: number;
+  transparentWorldAvailable?: boolean;
   selflessActive?: boolean;
 
   enemyName: string;
@@ -905,9 +1107,10 @@ export interface HudSnapshot {
   enemyState: FighterActionState;
   enemyWaveIndex: number;
   enemyWaveTotal: number;
-  bossPhase: 1 | 2 | 3;
+  bossPhase: 1 | 2 | 3 | 4;
   isBossBattle: boolean;
   enemyTelegraph: string | null;
+  enemyDemonClass?: DemonClassId;
 
   partnerEnemyName?: string | null;
   partnerEnemyHp?: number;
@@ -921,6 +1124,14 @@ export interface HudSnapshot {
   advancePrompt: string | null;
   playerWorldX: number;
   worldWidth: number;
+  inDarkDungeon?: boolean;
+  hasDungeonKey?: boolean;
+  dungeonDoorLocked?: boolean;
+  secretsFoundInRun?: number;
+  bonusObjectiveLabel?: string | null;
+  bonusObjectiveMet?: boolean;
+  perfectDodgesInRun?: number;
+  noDamageSoFar?: boolean;
 
   survivalWave: number;
   survivalMaxWaves: number;
@@ -941,7 +1152,9 @@ export interface HudSnapshot {
   playerLevel: number;
   playerXp: number;
   playerXpToNext: number;
-  lastRank: 'S' | 'A' | 'B' | null;
+  totalPlayerXp: number;
+  lastRank: CombatRank | null;
+  scoreBreakdown: ScoreBreakdown | null;
   comboCount: number;
   muted: boolean;
   matchTime: number;

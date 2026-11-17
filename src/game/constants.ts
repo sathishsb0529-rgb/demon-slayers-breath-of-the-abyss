@@ -1,4 +1,4 @@
-import { AttackKind, AttackSpec, MapId } from './types';
+import { AttackKind, AttackSpec, DifficultyMode, MapId } from './types';
 
 export const WORLD_WIDTH = 1860;
 export const WORLD_HEIGHT = 720;
@@ -18,7 +18,55 @@ export const MAP_WIDTHS: Record<MapId, number> = {
   swordsmith_village: 10000,
   hashira_grounds: 9600,
   infinity_castle: 12000,
+  burning_village: 10200,
+  haunted_temple: 10200,
+  underground_tunnel: 10800,
+  poisonous_forest: 10400,
+  final_fortress: 11800,
 };
+
+export const DIFFICULTY_SCALING: Record<
+  DifficultyMode,
+  { label: string; hpMult: number; dmgMult: number; aiRateMult: number; rewardMult: number; description: string }
+> = {
+  standard: {
+    label: 'Standard',
+    hpMult: 1.0,
+    dmgMult: 1.0,
+    aiRateMult: 1.0,
+    rewardMult: 1.0,
+    description: 'Rebalanced tactical combat with smarter demons and multi-phase bosses.',
+  },
+  hard: {
+    label: 'Hard (Hashira)',
+    hpMult: 1.32,
+    dmgMult: 1.24,
+    aiRateMult: 1.18,
+    rewardMult: 1.35,
+    description: 'Faster demon counterattacks, stronger Blood Demon Arts, +35% rewards.',
+  },
+  nightmare: {
+    label: 'Nightmare (Upper Rank)',
+    hpMult: 1.65,
+    dmgMult: 1.48,
+    aiRateMult: 1.34,
+    rewardMult: 1.75,
+    description: 'Relentless Upper Moon pacing and lethal traps. +75% rewards.',
+  },
+  abyssal: {
+    label: 'Abyssal (Demon King)',
+    hpMult: 2.05,
+    dmgMult: 1.75,
+    aiRateMult: 1.5,
+    rewardMult: 2.25,
+    description: 'Endgame Lv.50 challenge: extreme demon adaptation and +125% rewards.',
+  },
+};
+
+export const TRANSPARENT_WORLD_DURATION = 5.0;
+export const TRANSPARENT_WORLD_COOLDOWN = 45.0;
+export const TRANSPARENT_WORLD_NORMAL_SLOW = 0.65;
+export const TRANSPARENT_WORLD_BOSS_SLOW = 0.87;
 
 export function getMapWidth(mapId: MapId, compact = false): number {
   return compact ? WORLD_WIDTH : (MAP_WIDTHS[mapId] ?? 9600);

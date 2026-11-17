@@ -1,7 +1,10 @@
 import { ARENA_LEFT, getMapWidth, GROUND_Y, WORLD_HEIGHT, WORLD_WIDTH } from './constants';
 import {
+  ArenaAmbushTrigger,
   ArenaDecorItem,
+  ArenaDungeonItem,
   ArenaExploreCache,
+  ArenaHazard,
   ArenaObstacle,
   ArenaPlatform,
   ArenaWaterZone,
@@ -38,11 +41,14 @@ export interface ArenaLayout {
   waterZones: ArenaWaterZone[];
   decors: ArenaDecorItem[];
   exploreCaches: ArenaExploreCache[];
+  hazards: ArenaHazard[];
+  dungeonItems: ArenaDungeonItem[];
+  ambushes: ArenaAmbushTrigger[];
 }
 
-export function getMapZones(mapId: MapId, worldWidth: number): MapZone[] {
+export function getMapZones(mapId: MapId, worldWidth: number, hasDungeon = false): MapZone[] {
   const q = Math.round(worldWidth / 4);
-  const defs: Record<MapId, Array<{ name: string; biomeHint: MapZone['biomeHint'] }>> = {
+  const defs: Record<MapId, Array<{ name: string; biomeHint: MapZone['biomeHint']; isDarkZone?: boolean }>> = {
     bamboo_forest: [
       { name: 'Moonlit Bamboo Trail', biomeHint: 'forest' },
       { name: 'Silver Stream & Timber Bridge', biomeHint: 'bridge' },
@@ -52,12 +58,12 @@ export function getMapZones(mapId: MapId, worldWidth: number): MapZone[] {
     mountain_training: [
       { name: 'Mt. Sagiri Cedar Approach', biomeHint: 'mountain' },
       { name: 'Waterfall Gorge Crossing', biomeHint: 'river' },
-      { name: 'Echoing Stone Cavern', biomeHint: 'cave' },
+      { name: 'Echoing Stone Cavern', biomeHint: 'cave', isDarkZone: true },
       { name: 'Training Boulder Summit', biomeHint: 'battlefield' },
     ],
     snowy_mountain: [
       { name: 'Frozen Kamado Outskirts', biomeHint: 'mountain' },
-      { name: 'Icicle Cavern Pass', biomeHint: 'cave' },
+      { name: 'Icicle Cavern Pass', biomeHint: 'cave', isDarkZone: true },
       { name: 'Snow-Bound Ravine Bridge', biomeHint: 'bridge' },
       { name: 'Blizzard Ridge Peak', biomeHint: 'battlefield' },
     ],
@@ -69,20 +75,20 @@ export function getMapZones(mapId: MapId, worldWidth: number): MapZone[] {
     ],
     dark_forest: [
       { name: 'Wisteria Gate Border', biomeHint: 'forest' },
-      { name: 'Foggy Swamp Hollow', biomeHint: 'river' },
+      { name: 'Foggy Swamp Hollow', biomeHint: 'river', isDarkZone: true },
       { name: 'Abandoned Forest Shrine', biomeHint: 'temple' },
       { name: 'Blood-Stained Clearing', biomeHint: 'battlefield' },
     ],
     abandoned_temple: [
       { name: 'Overgrown Stone Steps', biomeHint: 'mountain' },
       { name: 'Crumbling Outer Pagoda', biomeHint: 'temple' },
-      { name: 'Tsuzumi Shifting Corridor', biomeHint: 'cave' },
+      { name: 'Tsuzumi Shifting Corridor', biomeHint: 'cave', isDarkZone: true },
       { name: 'Ancient Demon Sanctum', biomeHint: 'battlefield' },
     ],
     spider_mountain: [
       { name: 'Mt. Natagumo Foothills', biomeHint: 'forest' },
       { name: 'Gorge Rope Bridge & Falls', biomeHint: 'bridge' },
-      { name: 'Web-Bound Pine Ravine', biomeHint: 'cave' },
+      { name: 'Web-Bound Pine Ravine', biomeHint: 'cave', isDarkZone: true },
       { name: 'Crimson Thread Arena', biomeHint: 'battlefield' },
     ],
     entertainment_district: [
@@ -106,23 +112,55 @@ export function getMapZones(mapId: MapId, worldWidth: number): MapZone[] {
     infinity_castle: [
       { name: 'Changing Shoji Foyer', biomeHint: 'castle_hall' },
       { name: 'Moving Tatami Chasm', biomeHint: 'castle_chasm' },
-      { name: 'Vertical Suspended Stairways', biomeHint: 'castle_stairs' },
+      { name: 'Vertical Suspended Stairways', biomeHint: 'castle_stairs', isDarkZone: hasDungeon },
       { name: 'Demon King Throne Sanctum', biomeHint: 'castle_throne' },
+    ],
+    burning_village: [
+      { name: 'Scorched Watchtower Road', biomeHint: 'village' },
+      { name: 'Collapsing Ember Street', biomeHint: 'village' },
+      { name: 'Blazing Canal Crossing', biomeHint: 'bridge' },
+      { name: 'Ashen Furnace Square', biomeHint: 'battlefield' },
+    ],
+    haunted_temple: [
+      { name: 'Wailing Stone Courtyard', biomeHint: 'temple' },
+      { name: 'Cursed Torii Nave', biomeHint: 'temple', isDarkZone: true },
+      { name: 'Sunken Shrine Vault', biomeHint: 'dungeon', isDarkZone: true },
+      { name: 'Demonic Ritual Altar', biomeHint: 'battlefield' },
+    ],
+    underground_tunnel: [
+      { name: 'Collapsed Mine Descent', biomeHint: 'cave', isDarkZone: true },
+      { name: 'Lantern Chasm Passage', biomeHint: 'dungeon', isDarkZone: true },
+      { name: 'Sealed Abyssal Gatehouse', biomeHint: 'dungeon', isDarkZone: true },
+      { name: 'Subterranean Demon Lair', biomeHint: 'battlefield', isDarkZone: true },
+    ],
+    poisonous_forest: [
+      { name: 'Miasma Root Border', biomeHint: 'forest' },
+      { name: 'Venom Mire & Rot Bridge', biomeHint: 'river', isDarkZone: true },
+      { name: 'Spore-Choked Hollow', biomeHint: 'cave', isDarkZone: true },
+      { name: 'Blighted Heart Clearing', biomeHint: 'battlefield' },
+    ],
+    final_fortress: [
+      { name: 'Blood-Stained Bastion Gate', biomeHint: 'castle_hall' },
+      { name: 'Shattered Citadel Corridor', biomeHint: 'dungeon', isDarkZone: hasDungeon },
+      { name: 'Suspended Steel Walkway', biomeHint: 'castle_stairs', isDarkZone: hasDungeon },
+      { name: 'Abyssal Eclipse Throne', biomeHint: 'castle_throne' },
     ],
   };
 
   const list = defs[mapId] ?? defs.bamboo_forest;
   return list.map((item, idx) => ({
     id: `${mapId}_z${idx + 1}`,
-    name: item.name,
+    name: hasDungeon && idx === 1 ? `${item.name} · Dungeon` : item.name,
     startX: idx * q,
     endX: idx === 3 ? worldWidth : (idx + 1) * q,
-    biomeHint: item.biomeHint,
+    biomeHint: hasDungeon && (idx === 1 || idx === 2) ? 'dungeon' : item.biomeHint,
+    isDarkZone: item.isDarkZone || (hasDungeon && (idx === 1 || idx === 2)),
   }));
 }
 
-export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
+export function createArenaLayout(mapId: MapId, compact = false, hasDungeon = false): ArenaLayout {
   const worldWidth = getMapWidth(mapId, compact);
+  const effectiveDungeon = hasDungeon || mapId === 'underground_tunnel';
   const zones = compact
     ? [
         {
@@ -133,13 +171,16 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
           biomeHint: 'mountain' as const,
         },
       ]
-    : getMapZones(mapId, worldWidth);
+    : getMapZones(mapId, worldWidth, effectiveDungeon);
 
   const platforms: ArenaPlatform[] = [];
   const obstacles: ArenaObstacle[] = [];
   const waterZones: ArenaWaterZone[] = [];
   const decors: ArenaDecorItem[] = [];
   const exploreCaches: ArenaExploreCache[] = [];
+  const hazards: ArenaHazard[] = [];
+  const dungeonItems: ArenaDungeonItem[] = [];
+  const ambushes: ArenaAmbushTrigger[] = [];
 
   const mkPlat = (
     id: string,
@@ -165,6 +206,8 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
     moveAmpY,
     moveSpeed,
     phase,
+    collapseState: kind === 'collapsing_bridge' ? 'intact' : undefined,
+    collapseTimer: 0,
   });
 
   const mkObs = (
@@ -174,7 +217,8 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
     h: number,
     kind: ArenaObstacle['kind'],
     destructible: boolean,
-    hp: number
+    hp: number,
+    requiresKey = false
   ): ArenaObstacle => ({
     id,
     x,
@@ -187,6 +231,33 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
     hp,
     maxHp: hp,
     lastHitSwingId: -1,
+    requiresKey,
+    unlocked: !requiresKey,
+  });
+
+  const mkHazard = (
+    id: string,
+    x: number,
+    w: number,
+    kind: ArenaHazard['kind'],
+    damage: number,
+    cycleDuration = 3.2,
+    phaseOffset = 0
+  ): ArenaHazard => ({
+    id,
+    x,
+    y: GROUND_Y - (kind === 'falling_rock' ? 320 : kind === 'spike_trap' ? 24 : 18),
+    w,
+    h: kind === 'falling_rock' ? 44 : 20,
+    kind,
+    damage,
+    timer: phaseOffset,
+    cycleDuration,
+    active: kind === 'poison_pool' || kind === 'pit_hazard',
+    telegraphing: false,
+    rockY: kind === 'falling_rock' ? -80 : undefined,
+    rockVy: 0,
+    hitCooldown: 0,
   });
 
   if (compact) {
@@ -210,7 +281,7 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
         mkObs('mt_rock1', cx - 460, 62, 54, 'rock', true, 75),
         mkObs('mt_rock2', cx + 410, 62, 54, 'rock', true, 75)
       );
-    } else if (mapId === 'infinity_castle') {
+    } else if (mapId === 'infinity_castle' || mapId === 'final_fortress') {
       platforms.push(
         mkPlat('ic_tatami_l', cx - 450, GROUND_Y - 130, 220, 20, 'tatami', 0, 28, 1.35, 0),
         mkPlat('ic_stair_c', cx - 125, GROUND_Y - 210, 250, 18, 'stair', 55, 18, 0.95, 1.4),
@@ -230,7 +301,18 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
         mkObs('c_o2', cx + 390, 48, 52, 'fence', true, 45)
       );
     }
-    return { worldWidth, zones, platforms, obstacles, waterZones, decors, exploreCaches };
+    return {
+      worldWidth,
+      zones,
+      platforms,
+      obstacles,
+      waterZones,
+      decors,
+      exploreCaches,
+      hazards,
+      dungeonItems,
+      ambushes,
+    };
   }
 
   // EXPANSIVE MULTI-ZONE WORLD LAYOUT (9,600px to 12,000px)
@@ -239,8 +321,45 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
   const z3 = zLen * 2;
   const z4 = zLen * 3;
 
-  if (mapId === 'infinity_castle') {
-    // 4 Multi-Section Infinity Castle Wings: Shoji Halls, Moving Tatami Chasm, Vertical Suspended Stairway, Grand Throne
+  // Populate Boss Dungeon items (Key + Locked Gate + Secret Chests + Braziers + Ambushes) when enabled
+  const attachDungeonElements = () => {
+    const keyX = Math.round(z2 + zLen * 0.56);
+    const doorX = Math.round(z4 - 160);
+    dungeonItems.push(
+      { id: `${mapId}_brazier_1`, x: z2 + 280, y: GROUND_Y, kind: 'lantern_brazier', collected: false },
+      { id: `${mapId}_brazier_2`, x: z2 + zLen * 0.52, y: GROUND_Y, kind: 'lantern_brazier', collected: false },
+      { id: `${mapId}_brazier_3`, x: z3 + 420, y: GROUND_Y, kind: 'lantern_brazier', collected: false },
+      { id: `${mapId}_brazier_4`, x: z3 + zLen * 0.62, y: GROUND_Y, kind: 'lantern_brazier', collected: false },
+      { id: `${mapId}_key`, x: keyX, y: GROUND_Y, kind: 'dungeon_key', collected: false, label: 'Sanctum Gate Key' },
+      { id: `${mapId}_secret_1`, x: z2 + 860, y: GROUND_Y, kind: 'secret_chest', collected: false, coins: 45, label: 'Hidden Slayer Cache' },
+      { id: `${mapId}_secret_2`, x: z3 + 1280, y: GROUND_Y, kind: 'secret_chest', collected: false, coins: 60, label: 'Forgotten Treasury Chest' }
+    );
+    obstacles.push(
+      mkObs(`${mapId}_wbar_1`, z2 + 800, 42, 74, 'wooden_barrier', true, 55),
+      mkObs(`${mapId}_wbar_2`, z3 + 1220, 42, 74, 'wooden_barrier', true, 65),
+      mkObs(`${mapId}_boss_gate`, doorX, 52, 165, 'locked_door', false, 9999, true)
+    );
+    ambushes.push(
+      {
+        id: `${mapId}_amb_1`,
+        triggerX: z2 + 480,
+        triggered: false,
+        archetype: 'fast',
+        name: 'Tunnel Stalker',
+        subtitle: 'Dungeon Ambush',
+      },
+      {
+        id: `${mapId}_amb_2`,
+        triggerX: z3 + 680,
+        triggered: false,
+        archetype: 'strong',
+        name: 'Vault Warden',
+        subtitle: 'Armored Guard',
+      }
+    );
+  };
+
+  if (mapId === 'infinity_castle' || mapId === 'final_fortress') {
     for (let i = 0; i < 6; i++) {
       const hx = 420 + i * 380;
       decors.push({ id: `ic_p_${i}`, x: hx, y: GROUND_Y - 340, w: 38, h: 340, kind: 'castle_pillar' });
@@ -250,7 +369,6 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
       platforms.push(mkPlat(`ic_balc_${i}`, hx + 60, GROUND_Y - 135 - (i % 2) * 50, 210, 18, 'tatami'));
     }
 
-    // Zone 2: Moving Tatami Floors over Abyssal Chasm
     for (let i = 0; i < 6; i++) {
       const tx = z2 + 180 + i * 440;
       platforms.push(
@@ -260,17 +378,19 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
           GROUND_Y - 125 - (i % 3) * 45,
           240,
           20,
-          'tatami',
-          i % 2 === 0 ? 45 : 0,
-          34,
-          1.15 + (i % 3) * 0.25,
+          i === 2 ? 'collapsing_bridge' : 'tatami',
+          i % 2 === 0 && i !== 2 ? 45 : 0,
+          i === 2 ? 0 : 34,
+          i === 2 ? 0 : 1.15 + (i % 3) * 0.25,
           i * 1.1
         )
       );
       decors.push({ id: `ic_portal_${i}`, x: tx + 80, y: GROUND_Y - 290, w: 90, h: 140, kind: 'shoji_portal' });
+      if (i % 2 === 1) {
+        hazards.push(mkHazard(`ic_spk_${i}`, tx + 110, 88, mapId === 'final_fortress' ? 'fire_trap' : 'spike_trap', 18, 3.4, i * 0.7));
+      }
     }
 
-    // Zone 3: Vertical Spaces & Suspended Diagonal Stairways
     for (let i = 0; i < 7; i++) {
       const sx = z3 + 120 + i * 390;
       platforms.push(
@@ -280,9 +400,11 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
       if (i % 2 === 0) {
         obstacles.push(mkObs(`ic_pillar_z3_${i}`, sx + 260, 40, 70, 'shoji_wall', true, 60));
       }
+      if (i === 1 || i === 4) {
+        hazards.push(mkHazard(`ic_fall_${i}`, sx + 60, 74, 'falling_rock', 22, 3.8, i * 0.9));
+      }
     }
 
-    // Zone 4: Grand Upper Moon / Muzan Sanctum Arena
     const bossCenter = z4 + zLen * 0.55;
     platforms.push(
       mkPlat('ic_boss_l', bossCenter - 520, GROUND_Y - 135, 230, 20, 'tatami', 0, 26, 1.25, 0),
@@ -309,11 +431,11 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
       { id: 'ic_cache_3', x: z3 + zLen * 0.55, y: GROUND_Y, kind: 'wisteria_cache', coins: 25, energy: 15, hp: 30, collected: false },
       { id: 'ic_cache_4', x: z4 + 280, y: GROUND_Y, kind: 'spirit_shrine', coins: 30, energy: 35, hp: 20, collected: false }
     );
-    return { worldWidth, zones, platforms, obstacles, waterZones, decors, exploreCaches };
+    if (effectiveDungeon) attachDungeonElements();
+    return { worldWidth, zones, platforms, obstacles, waterZones, decors, exploreCaches, hazards, dungeonItems, ambushes };
   }
 
-  // Natural & Village Maps: Connected Biomes across 4 expansive zones
-  // Zone 1 (0 .. z2): Approach Trail / Outskirts with trees, lanterns, crates/fences, low platforms
+  // Natural, Village, Tunnel & Haunted Temple Maps
   for (let x = 320; x < z2 - 220; x += 380) {
     decors.push({
       id: `z1_l_${x}`,
@@ -323,22 +445,24 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
       h: 96,
       kind: 'lantern',
     });
-    if (mapId === 'japanese_village' || mapId === 'entertainment_district' || mapId === 'swordsmith_village') {
-      decors.push({ id: `z1_h_${x}`, x: x + 95, y: GROUND_Y - 185, w: 200, h: 185, kind: 'house' });
+    if (mapId === 'japanese_village' || mapId === 'entertainment_district' || mapId === 'swordsmith_village' || mapId === 'burning_village') {
+      decors.push({ id: `z1_h_${x}`, x: x + 95, y: GROUND_Y - 185, w: 200, h: 185, kind: mapId === 'burning_village' ? 'burning_rafter' : 'house' });
     } else if (mapId === 'bamboo_forest') {
       decors.push({ id: `z1_b_${x}`, x: x + 120, y: GROUND_Y - 320, w: 90, h: 320, kind: 'bamboo_cluster' });
+    } else if (mapId === 'haunted_temple') {
+      decors.push({ id: `z1_c_${x}`, x: x + 115, y: GROUND_Y - 240, w: 54, h: 110, kind: 'hanging_cage' });
     } else {
       decors.push({ id: `z1_p_${x}`, x: x + 110, y: GROUND_Y - 230, w: 110, h: 230, kind: 'pine_tree' });
     }
     if (x % 760 === 320) {
-      platforms.push(mkPlat(`z1_pl_${x}`, x + 60, GROUND_Y - 125, 200, 16, 'wooden'));
+      platforms.push(mkPlat(`z1_pl_${x}`, x + 60, GROUND_Y - 125, 200, 16, mapId === 'underground_tunnel' ? 'stone' : 'wooden'));
       obstacles.push(
         mkObs(
           `z1_ob_${x}`,
           x + 240,
           48,
           52,
-          mapId === 'mountain_training' || mapId === 'snowy_mountain' ? 'rock' : 'fence',
+          mapId === 'mountain_training' || mapId === 'snowy_mountain' || mapId === 'underground_tunnel' ? 'rock' : 'fence',
           true,
           45
         )
@@ -346,14 +470,15 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
     }
   }
 
-  // Zone 2 (z2 .. z3): River & Wooden Bridge + Waterfall Gorge
+  // Zone 2 (z2 .. z3): River / Chasm Bridge + Biome Hazards
   const riverX = z2 + zLen * 0.28;
   const riverW = 540;
-  waterZones.push({ id: 'z2_river', x: riverX, w: riverW, kind: 'river' });
-  decors.push({ id: 'z2_waterfall', x: riverX + 80, y: GROUND_Y - 340, w: 150, h: 340, kind: 'waterfall' });
-  // Walkable elevated bridge over river + stepping ledges
+  if (mapId !== 'underground_tunnel' && mapId !== 'haunted_temple') {
+    waterZones.push({ id: 'z2_river', x: riverX, w: riverW, kind: 'river' });
+    decors.push({ id: 'z2_waterfall', x: riverX + 80, y: GROUND_Y - 340, w: 150, h: 340, kind: 'waterfall' });
+  }
   platforms.push(
-    mkPlat('z2_bridge_deck', riverX - 30, GROUND_Y - 32, riverW + 60, 22, 'bridge'),
+    mkPlat('z2_bridge_deck', riverX - 30, GROUND_Y - 32, riverW + 60, 22, mapId === 'burning_village' || mapId === 'poisonous_forest' ? 'collapsing_bridge' : 'bridge'),
     mkPlat('z2_bridge_roof', riverX + 120, GROUND_Y - 165, 280, 16, 'wooden')
   );
   decors.push({ id: 'z2_torii', x: riverX - 180, y: GROUND_Y, w: 210, h: 220, kind: 'torii' });
@@ -369,11 +494,50 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
       y: GROUND_Y - 185,
       w: 190,
       h: 185,
-      kind: mapId === 'swordsmith_village' ? 'forge_furnace' : mapId === 'entertainment_district' || mapId === 'japanese_village' ? 'house' : 'wisteria_tree',
+      kind:
+        mapId === 'swordsmith_village'
+          ? 'forge_furnace'
+          : mapId === 'burning_village'
+            ? 'burning_rafter'
+            : mapId === 'entertainment_district' || mapId === 'japanese_village'
+              ? 'house'
+              : 'wisteria_tree',
     });
   }
 
-  // Zone 3 (z3 .. z4): Mountain Cave / Destroyed Shrine & Battleground Ruin
+  // Biome-Specific Interactive Hazards
+  if (mapId === 'burning_village') {
+    hazards.push(
+      mkHazard('bv_fire_1', z2 + 140, 110, 'fire_trap', 16, 3.0, 0.2),
+      mkHazard('bv_fire_2', z3 + 640, 120, 'fire_trap', 18, 3.2, 1.4),
+      mkHazard('bv_fire_3', z3 + 1420, 110, 'fire_trap', 18, 2.9, 0.8)
+    );
+  } else if (mapId === 'poisonous_forest') {
+    hazards.push(
+      mkHazard('pf_pool_1', z2 + 150, 150, 'poison_pool', 10, 4.0, 0),
+      mkHazard('pf_pool_2', z3 + 520, 165, 'poison_pool', 11, 4.0, 0),
+      mkHazard('pf_pool_3', z3 + 1320, 150, 'poison_pool', 11, 4.0, 0)
+    );
+  } else if (mapId === 'underground_tunnel' || mapId === 'mountain_training' || mapId === 'abandoned_temple') {
+    hazards.push(
+      mkHazard('ug_rock_1', z2 + 340, 74, 'falling_rock', 18, 3.5, 0.4),
+      mkHazard('ug_spk_1', z3 + 420, 96, 'spike_trap', 15, 3.1, 1.0),
+      mkHazard('ug_rock_2', z3 + 1150, 74, 'falling_rock', 20, 3.7, 1.8)
+    );
+  } else if (mapId === 'haunted_temple') {
+    hazards.push(
+      mkHazard('ht_spk_1', z2 + 240, 100, 'spike_trap', 15, 3.0, 0.3),
+      mkHazard('ht_spk_2', z3 + 820, 100, 'spike_trap', 16, 3.2, 1.4),
+      mkHazard('ht_pit_1', z3 + 1520, 120, 'pit_hazard', 18, 4.0, 0)
+    );
+  } else {
+    hazards.push(
+      mkHazard(`${mapId}_hz_1`, z3 + 560, 88, mapId === 'snowy_mountain' ? 'falling_rock' : 'spike_trap', 14, 3.8, 0.6),
+      mkHazard(`${mapId}_hz_2`, z3 + 1380, 92, 'spike_trap', 14, 3.6, 1.9)
+    );
+  }
+
+  // Zone 3 (z3 .. z4): Cavern / Destroyed Shrine & Battleground Ruin
   const caveX = z3 + 220;
   decors.push({ id: 'z3_cave', x: caveX, y: GROUND_Y - 240, w: 340, h: 240, kind: 'cave_mouth' });
   decors.push({ id: 'z3_shrine', x: z3 + zLen * 0.52, y: GROUND_Y - 230, w: 260, h: 230, kind: 'shrine' });
@@ -381,21 +545,23 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
   platforms.push(
     mkPlat('z3_ledge_1', z3 + 240, GROUND_Y - 135, 220, 18, 'stone'),
     mkPlat('z3_ledge_2', z3 + 680, GROUND_Y - 185, 230, 16, 'wooden'),
-    mkPlat('z3_ledge_3', z3 + 1180, GROUND_Y - 130, 240, 18, 'stone'),
+    mkPlat('z3_ledge_3', z3 + 1180, GROUND_Y - 130, 240, 18, 'collapsing_bridge'),
     mkPlat('z3_ledge_4', z3 + 1680, GROUND_Y - 145, 220, 16, 'bridge')
   );
   obstacles.push(
     mkObs('z3_ob_1', z3 + 480, 48, 62, 'pillar', true, 65),
     mkObs('z3_ob_2', z3 + 980, 52, 54, 'rock', false, 999),
     mkObs('z3_ob_3', z3 + 1480, 46, 58, 'tree_trunk', true, 55),
-    mkObs('z3_ob_4', z3 + 1950, 50, 52, 'crate', true, 45)
+    mkObs('z3_ob_4', z3 + 1950, 50, 52, 'wooden_barrier', true, 55)
   );
 
-  // Zone 4 (z4 .. worldWidth): Grand Boss Battlefield Clearing with balanced combat platforms
+  // Zone 4 (z4 .. worldWidth): Grand Boss Battlefield Clearing
   const bossCenter = z4 + zLen * 0.52;
-  waterZones.push({ id: 'z4_pool', x: z4 + 80, w: 260, kind: 'waterfall_pool' });
+  if (mapId !== 'underground_tunnel') {
+    waterZones.push({ id: 'z4_pool', x: z4 + 80, w: 260, kind: 'waterfall_pool' });
+    decors.push({ id: 'z4_waterfall', x: z4 + 130, y: GROUND_Y - 300, w: 120, h: 300, kind: 'waterfall' });
+  }
   decors.push(
-    { id: 'z4_waterfall', x: z4 + 130, y: GROUND_Y - 300, w: 120, h: 300, kind: 'waterfall' },
     { id: 'z4_torii_boss', x: bossCenter, y: GROUND_Y, w: 240, h: 230, kind: 'torii' },
     { id: 'z4_lantern_l', x: bossCenter - 490, y: GROUND_Y, w: 32, h: 98, kind: 'lantern' },
     { id: 'z4_lantern_r', x: bossCenter + 490, y: GROUND_Y, w: 32, h: 98, kind: 'lantern' }
@@ -418,7 +584,11 @@ export function createArenaLayout(mapId: MapId, compact = false): ArenaLayout {
     { id: `${mapId}_cache_4`, x: bossCenter - 620, y: GROUND_Y, kind: 'coin_chest', coins: 30, energy: 20, hp: 15, collected: false }
   );
 
-  return { worldWidth, zones, platforms, obstacles, waterZones, decors, exploreCaches };
+  if (effectiveDungeon) {
+    attachDungeonElements();
+  }
+
+  return { worldWidth, zones, platforms, obstacles, waterZones, decors, exploreCaches, hazards, dungeonItems, ambushes };
 }
 
 export class ArenaRenderer {
@@ -476,7 +646,9 @@ export class ArenaRenderer {
     const isRise =
       mapId === 'entertainment_district' ||
       mapId === 'swordsmith_village' ||
-      mapId === 'infinity_castle';
+      mapId === 'infinity_castle' ||
+      mapId === 'burning_village' ||
+      mapId === 'final_fortress';
 
     for (const p of this.ambient) {
       if (isRise) {
@@ -509,10 +681,26 @@ export class ArenaRenderer {
   ): void {
     const sky = ctx.createLinearGradient(0, 0, 0, viewH);
 
-    if (mapId === 'infinity_castle') {
-      sky.addColorStop(0, '#14050c');
-      sky.addColorStop(0.5, '#260a14');
+    if (mapId === 'infinity_castle' || mapId === 'final_fortress') {
+      sky.addColorStop(0, mapId === 'final_fortress' ? '#1a040a' : '#14050c');
+      sky.addColorStop(0.5, mapId === 'final_fortress' ? '#2e0812' : '#260a14');
       sky.addColorStop(1, '#090307');
+    } else if (mapId === 'burning_village') {
+      sky.addColorStop(0, '#1e0604');
+      sky.addColorStop(0.5, '#4c1108');
+      sky.addColorStop(1, '#1a0705');
+    } else if (mapId === 'poisonous_forest') {
+      sky.addColorStop(0, '#04120d');
+      sky.addColorStop(0.5, '#12281c');
+      sky.addColorStop(1, '#091112');
+    } else if (mapId === 'underground_tunnel') {
+      sky.addColorStop(0, '#04060a');
+      sky.addColorStop(0.5, '#0d111a');
+      sky.addColorStop(1, '#05070b');
+    } else if (mapId === 'haunted_temple') {
+      sky.addColorStop(0, '#070617');
+      sky.addColorStop(0.55, '#171130');
+      sky.addColorStop(1, '#0a0814');
     } else if (mapId === 'mountain_training' || mapId === 'hashira_grounds') {
       sky.addColorStop(0, '#0c1833');
       sky.addColorStop(0.5, '#1d3454');
@@ -538,8 +726,23 @@ export class ArenaRenderer {
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    if (mapId === 'infinity_castle') {
+    if (mapId === 'infinity_castle' || mapId === 'final_fortress') {
       this.renderInfinityCastleBackdrop(ctx, cameraX, viewW, viewH);
+      return;
+    }
+    if (mapId === 'underground_tunnel') {
+      // Cavern ceiling stalactites & rock ribs
+      ctx.fillStyle = '#090d14';
+      ctx.fillRect(0, 0, viewW, 68);
+      for (let x = -40; x <= viewW + 40; x += 64) {
+        const drop = 44 + Math.abs(Math.sin((x + cameraX * 0.25) * 0.04)) * 52;
+        ctx.beginPath();
+        ctx.moveTo(x - 24, 0);
+        ctx.lineTo(x + 24, 0);
+        ctx.lineTo(x, drop);
+        ctx.closePath();
+        ctx.fill();
+      }
       return;
     }
 
@@ -672,7 +875,9 @@ export class ArenaRenderer {
     waterZones: ArenaWaterZone[] = [],
     decors: ArenaDecorItem[] = [],
     exploreCaches: ArenaExploreCache[] = [],
-    isDomaFrost = false
+    isDomaFrost = false,
+    hazards: ArenaHazard[] = [],
+    dungeonItems: ArenaDungeonItem[] = []
   ): void {
     const viewLeft = Math.max(0, cameraX - 1150);
     const viewRight = Math.min(worldWidth, cameraX + 1150);
@@ -686,9 +891,13 @@ export class ArenaRenderer {
       this.drawPineSilhouettes(ctx, '#1b364d', true, viewLeft, viewRight);
     } else if (mapId === 'japanese_village') {
       this.drawVillageRoofs(ctx, '#1c1917', '#fbbf24', viewLeft, viewRight);
+    } else if (mapId === 'burning_village') {
+      this.drawVillageRoofs(ctx, '#290f09', '#f97316', viewLeft, viewRight);
     } else if (mapId === 'dark_forest') {
       this.drawGnarledTrees(ctx, '#140f24', viewLeft, viewRight);
-    } else if (mapId === 'abandoned_temple') {
+    } else if (mapId === 'poisonous_forest') {
+      this.drawGnarledTrees(ctx, '#0f261b', viewLeft, viewRight);
+    } else if (mapId === 'abandoned_temple' || mapId === 'haunted_temple') {
       this.drawPagodaRuins(ctx, viewLeft, viewRight);
     } else if (mapId === 'spider_mountain') {
       this.drawGnarledTrees(ctx, '#0e1326', viewLeft, viewRight);
@@ -699,7 +908,7 @@ export class ArenaRenderer {
       this.drawForgeChimneys(ctx, viewLeft, viewRight);
     } else if (mapId === 'hashira_grounds') {
       this.drawDojoCourtyard(ctx, viewLeft, viewRight);
-    } else if (mapId === 'infinity_castle') {
+    } else if (mapId === 'infinity_castle' || mapId === 'final_fortress') {
       this.drawInfinitySuspendedPlatform(ctx, viewLeft, viewRight);
     }
 
@@ -708,11 +917,13 @@ export class ArenaRenderer {
 
     // Atmospheric ground mist across camera view
     const fogColor =
-      mapId === 'infinity_castle'
+      mapId === 'infinity_castle' || mapId === 'final_fortress'
         ? 'rgba(244, 63, 94, 0.14)'
-        : mapId === 'swordsmith_village'
-          ? 'rgba(251, 146, 60, 0.12)'
-          : 'rgba(148, 163, 184, 0.16)';
+        : mapId === 'burning_village' || mapId === 'swordsmith_village'
+          ? 'rgba(251, 146, 60, 0.16)'
+          : mapId === 'poisonous_forest'
+            ? 'rgba(132, 204, 22, 0.16)'
+            : 'rgba(148, 163, 184, 0.16)';
     const fogGrad = ctx.createLinearGradient(0, GROUND_Y - 140, 0, GROUND_Y + 12);
     fogGrad.addColorStop(0, 'rgba(0,0,0,0)');
     fogGrad.addColorStop(1, fogColor);
@@ -720,15 +931,21 @@ export class ArenaRenderer {
     ctx.fillRect(viewLeft - 60, GROUND_Y - 140, viewRight - viewLeft + 120, 152);
 
     // Grass tufts swaying along ground (culled)
-    if (mapId !== 'infinity_castle' && mapId !== 'entertainment_district') {
+    if (mapId !== 'infinity_castle' && mapId !== 'final_fortress' && mapId !== 'entertainment_district' && mapId !== 'underground_tunnel') {
       this.renderGrassTufts(ctx, mapId, viewLeft, viewRight);
     }
 
-    // Interactive Elevated Platforms (Bridges, Stones, Tatami, Stairs)
+    // Interactive Elevated Platforms (Bridges, Stones, Tatami, Stairs, Collapsing Bridges)
     this.renderPlatforms(ctx, platforms, viewLeft, viewRight);
 
-    // Interactive / Destructible Obstacles
+    // Interactive / Destructible Obstacles & Locked Dungeon Gates
     this.renderObstacles(ctx, obstacles, viewLeft, viewRight);
+
+    // Dungeon Items (Keys, Lantern Braziers, Secret Chests)
+    this.renderDungeonItems(ctx, dungeonItems, viewLeft, viewRight);
+
+    // Environmental & Class-Spawned Hazards
+    this.renderHazards(ctx, hazards, viewLeft, viewRight);
 
     // Exploration Caches (Coin Chests, Wisteria Lantern Caches, Spirit Shrines)
     this.renderExploreCaches(ctx, exploreCaches, viewLeft, viewRight);
@@ -920,6 +1137,46 @@ export class ArenaRenderer {
         ctx.fillRect(d.x, d.y, d.w, d.h);
         ctx.strokeRect(d.x, d.y, d.w, d.h);
         ctx.restore();
+      } else if (d.kind === 'burning_rafter') {
+        ctx.save();
+        ctx.fillStyle = '#1c0b07';
+        ctx.fillRect(d.x + 12, d.y + 42, d.w - 24, d.h - 42);
+        ctx.fillStyle = '#3f160c';
+        ctx.beginPath();
+        ctx.moveTo(d.x - 16, d.y + 44);
+        ctx.lineTo(d.x + d.w * 0.5, d.y);
+        ctx.lineTo(d.x + d.w + 16, d.y + 44);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = 'rgba(249, 115, 22, 0.72)';
+        for (let f = 0; f < 4; f++) {
+          const fx = d.x + 28 + f * 42;
+          const fh = 24 + Math.sin(this.time * 12 + f) * 9;
+          ctx.beginPath();
+          ctx.moveTo(fx - 10, d.y + 44);
+          ctx.lineTo(fx, d.y + 44 - fh);
+          ctx.lineTo(fx + 10, d.y + 44);
+          ctx.fill();
+        }
+        ctx.restore();
+      } else if (d.kind === 'hanging_cage') {
+        ctx.save();
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(d.x + d.w * 0.5, 0);
+        ctx.lineTo(d.x + d.w * 0.5, d.y);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+        ctx.fillRect(d.x, d.y, d.w, d.h);
+        ctx.strokeRect(d.x, d.y, d.w, d.h);
+        for (let bx = d.x + 12; bx < d.x + d.w - 8; bx += 12) {
+          ctx.beginPath();
+          ctx.moveTo(bx, d.y);
+          ctx.lineTo(bx, d.y + d.h);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
     }
   }
@@ -983,14 +1240,20 @@ export class ArenaRenderer {
     viewRight: number
   ): void {
     for (const p of platforms) {
+      if (p.collapseState === 'collapsed') continue;
       if (p.x + p.w < viewLeft - 60 || p.x > viewRight + 60) continue;
       ctx.save();
+      const shakeX = p.collapseState === 'shaking' ? Math.sin(this.time * 48) * 3 : 0;
+      ctx.translate(shakeX, 0);
       if (p.kind === 'stone') {
         ctx.fillStyle = '#334155';
         ctx.strokeStyle = '#94a3b8';
       } else if (p.kind === 'tatami' || p.kind === 'stair') {
         ctx.fillStyle = '#451a03';
         ctx.strokeStyle = '#f59e0b';
+      } else if (p.kind === 'collapsing_bridge') {
+        ctx.fillStyle = p.collapseState === 'shaking' ? '#7f1d1d' : '#451a03';
+        ctx.strokeStyle = p.collapseState === 'shaking' ? '#fca5a5' : '#d97706';
       } else {
         ctx.fillStyle = '#3f2718';
         ctx.strokeStyle = '#b45309';
@@ -1000,9 +1263,9 @@ export class ArenaRenderer {
       ctx.fillRect(p.x, p.y, p.w, p.h);
       ctx.strokeRect(p.x, p.y, p.w, p.h);
 
-      if (p.kind === 'bridge') {
+      if (p.kind === 'bridge' || p.kind === 'collapsing_bridge') {
         // Wooden bridge rails
-        ctx.strokeStyle = '#92400e';
+        ctx.strokeStyle = p.kind === 'collapsing_bridge' ? '#b45309' : '#92400e';
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(p.x, p.y - 24);
@@ -1036,10 +1299,29 @@ export class ArenaRenderer {
     viewRight: number
   ): void {
     for (const o of obstacles) {
-      if (o.hp <= 0) continue;
+      if (o.hp <= 0 || o.unlocked) continue;
       if (o.x + o.w < viewLeft - 60 || o.x > viewRight + 60) continue;
       ctx.save();
-      if (o.kind === 'rock') {
+      if (o.kind === 'locked_door') {
+        ctx.fillStyle = '#1e1b2e';
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 3;
+        ctx.fillRect(o.x, o.y, o.w, o.h);
+        ctx.strokeRect(o.x, o.y, o.w, o.h);
+        // Iron bars + glowing lock crest
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 2.5;
+        for (let bx = o.x + 10; bx < o.x + o.w - 6; bx += 12) {
+          ctx.beginPath();
+          ctx.moveTo(bx, o.y + 8);
+          ctx.lineTo(bx, o.y + o.h - 8);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.arc(o.x + o.w * 0.5, o.y + o.h * 0.5, 9, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (o.kind === 'rock') {
         ctx.fillStyle = '#475569';
         ctx.strokeStyle = '#0f172a';
         ctx.lineWidth = 2.2;
@@ -1052,9 +1334,9 @@ export class ArenaRenderer {
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
-      } else if (o.kind === 'crate' || o.kind === 'fence') {
-        ctx.fillStyle = o.kind === 'crate' ? '#78350f' : '#92400e';
-        ctx.strokeStyle = '#1c1917';
+      } else if (o.kind === 'crate' || o.kind === 'fence' || o.kind === 'wooden_barrier') {
+        ctx.fillStyle = o.kind === 'wooden_barrier' ? '#57280a' : o.kind === 'crate' ? '#78350f' : '#92400e';
+        ctx.strokeStyle = o.kind === 'wooden_barrier' ? '#fbbf24' : '#1c1917';
         ctx.lineWidth = 2;
         ctx.fillRect(o.x, o.y, o.w, o.h);
         ctx.strokeRect(o.x, o.y, o.w, o.h);
@@ -1088,6 +1370,153 @@ export class ArenaRenderer {
         ctx.lineTo(o.x + o.w * 0.35, o.y + o.h * 0.5);
         ctx.lineTo(o.x + o.w * 0.65, o.y + o.h - 6);
         ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  private renderDungeonItems(
+    ctx: CanvasRenderingContext2D,
+    items: ArenaDungeonItem[],
+    viewLeft: number,
+    viewRight: number
+  ): void {
+    for (const item of items) {
+      if (item.x < viewLeft - 100 || item.x > viewRight + 100) continue;
+      if (item.kind === 'lantern_brazier') {
+        ctx.save();
+        ctx.fillStyle = '#1f2937';
+        ctx.fillRect(item.x - 14, item.y - 44, 28, 44);
+        const flicker = 0.8 + Math.sin(this.time * 10 + item.x) * 0.2;
+        const glow = ctx.createRadialGradient(item.x, item.y - 52, 4, item.x, item.y - 52, 62 * flicker);
+        glow.addColorStop(0, 'rgba(253, 224, 71, 0.85)');
+        glow.addColorStop(0.4, 'rgba(249, 115, 22, 0.35)');
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(item.x, item.y - 52, 62 * flicker, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath();
+        ctx.arc(item.x, item.y - 50, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
+      if (item.collected) continue;
+      ctx.save();
+      const bob = Math.sin(this.time * 4 + item.x * 0.01) * 5;
+      if (item.kind === 'dungeon_key') {
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.24)';
+        ctx.beginPath();
+        ctx.arc(item.x, item.y - 36 + bob, 24, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(item.x - 7, item.y - 36 + bob, 7, 0, Math.PI * 2);
+        ctx.moveTo(item.x, item.y - 36 + bob);
+        ctx.lineTo(item.x + 16, item.y - 36 + bob);
+        ctx.lineTo(item.x + 16, item.y - 30 + bob);
+        ctx.stroke();
+      } else if (item.kind === 'secret_chest') {
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.22)';
+        ctx.beginPath();
+        ctx.arc(item.x, item.y - 20, 28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#451a03';
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2.4;
+        ctx.fillRect(item.x - 20, item.y - 30, 40, 30);
+        ctx.strokeRect(item.x - 20, item.y - 30, 40, 30);
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(item.x - 5, item.y - 20, 10, 9);
+      }
+      ctx.restore();
+    }
+  }
+
+  private renderHazards(
+    ctx: CanvasRenderingContext2D,
+    hazards: ArenaHazard[],
+    viewLeft: number,
+    viewRight: number
+  ): void {
+    for (const h of hazards) {
+      if (h.x + h.w < viewLeft - 80 || h.x > viewRight + 80) continue;
+      ctx.save();
+      if (h.kind === 'poison_pool' || h.kind === 'blood_trap' || h.kind === 'ice_patch') {
+        ctx.fillStyle =
+          h.kind === 'poison_pool'
+            ? 'rgba(132, 204, 22, 0.55)'
+            : h.kind === 'blood_trap'
+              ? 'rgba(225, 29, 72, 0.55)'
+              : 'rgba(125, 211, 252, 0.5)';
+        ctx.strokeStyle =
+          h.kind === 'poison_pool' ? '#a3e635' : h.kind === 'blood_trap' ? '#fda4af' : '#e0f2fe';
+        ctx.lineWidth = 2;
+        ctx.fillRect(h.x, GROUND_Y - 5, h.w, 10);
+        ctx.strokeRect(h.x, GROUND_Y - 5, h.w, 10);
+      } else if (h.kind === 'pit_hazard') {
+        ctx.fillStyle = '#020617';
+        ctx.fillRect(h.x, GROUND_Y - 2, h.w, WORLD_HEIGHT - GROUND_Y + 4);
+        ctx.strokeStyle = '#dc2626';
+        ctx.lineWidth = 1.6;
+        ctx.strokeRect(h.x, GROUND_Y - 2, h.w, 8);
+      } else if (h.kind === 'fire_trap') {
+        if (h.telegraphing) {
+          ctx.fillStyle = 'rgba(251, 146, 60, 0.45)';
+          ctx.fillRect(h.x, GROUND_Y - 8, h.w, 10);
+        }
+        if (h.active) {
+          const grad = ctx.createLinearGradient(0, GROUND_Y - 96, 0, GROUND_Y);
+          grad.addColorStop(0, 'rgba(253, 224, 71, 0.85)');
+          grad.addColorStop(1, 'rgba(220, 38, 38, 0.92)');
+          ctx.fillStyle = grad;
+          for (let fx = h.x + 8; fx < h.x + h.w - 8; fx += 22) {
+            const fh = 58 + Math.sin(this.time * 18 + fx) * 18;
+            ctx.beginPath();
+            ctx.moveTo(fx - 10, GROUND_Y);
+            ctx.lineTo(fx, GROUND_Y - fh);
+            ctx.lineTo(fx + 10, GROUND_Y);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+      } else if (h.kind === 'spike_trap') {
+        ctx.fillStyle = h.telegraphing ? 'rgba(248, 113, 113, 0.45)' : '#334155';
+        ctx.fillRect(h.x, GROUND_Y - 5, h.w, 6);
+        if (h.active) {
+          ctx.fillStyle = '#e2e8f0';
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 1.4;
+          for (let sx = h.x + 6; sx < h.x + h.w - 6; sx += 16) {
+            ctx.beginPath();
+            ctx.moveTo(sx - 6, GROUND_Y);
+            ctx.lineTo(sx, GROUND_Y - 28);
+            ctx.lineTo(sx + 6, GROUND_Y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+      } else if (h.kind === 'falling_rock') {
+        if (h.telegraphing) {
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 4]);
+          ctx.strokeRect(h.x, GROUND_Y - 6, h.w, 8);
+          ctx.setLineDash([]);
+        }
+        if (h.active && h.rockY !== undefined) {
+          ctx.fillStyle = '#475569';
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(h.x + h.w * 0.5, h.rockY, 22, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
       }
       ctx.restore();
     }
@@ -1388,6 +1817,48 @@ export class ArenaRenderer {
     ctx.fillStyle = glowColor;
     ctx.globalAlpha = 0.9 * flicker;
     ctx.fillRect(x - 5, groundY - 80, 10, 12);
+    ctx.restore();
+  }
+
+  private lightCanvas: HTMLCanvasElement | null = null;
+
+  public renderDarkDungeonLighting(
+    ctx: CanvasRenderingContext2D,
+    viewW: number,
+    viewH: number,
+    darkAlpha: number,
+    screenLights: Array<{ x: number; y: number; radius: number }>
+  ): void {
+    if (darkAlpha <= 0.02) return;
+    if (!this.lightCanvas) {
+      this.lightCanvas = document.createElement('canvas');
+    }
+    if (this.lightCanvas.width !== viewW || this.lightCanvas.height !== viewH) {
+      this.lightCanvas.width = viewW;
+      this.lightCanvas.height = viewH;
+    }
+    const lctx = this.lightCanvas.getContext('2d');
+    if (!lctx) return;
+
+    lctx.clearRect(0, 0, viewW, viewH);
+    lctx.globalCompositeOperation = 'source-over';
+    lctx.fillStyle = `rgba(3, 5, 14, ${Math.min(0.84, darkAlpha)})`;
+    lctx.fillRect(0, 0, viewW, viewH);
+
+    lctx.globalCompositeOperation = 'destination-out';
+    for (const light of screenLights) {
+      const grad = lctx.createRadialGradient(light.x, light.y, light.radius * 0.12, light.x, light.y, light.radius);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');
+      grad.addColorStop(0.6, 'rgba(0,0,0,0.65)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      lctx.fillStyle = grad;
+      lctx.beginPath();
+      lctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
+      lctx.fill();
+    }
+
+    ctx.save();
+    ctx.drawImage(this.lightCanvas, 0, 0);
     ctx.restore();
   }
 }

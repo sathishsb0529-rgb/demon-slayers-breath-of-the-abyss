@@ -19,6 +19,7 @@ export const TOUCH_CONTROL_ORDER: TouchControlId[] = [
   'breathing3',
   'breathing4',
   'awakening',
+  'transparentWorld',
   'ultimate',
 ];
 
@@ -35,23 +36,25 @@ export const TOUCH_CONTROL_META: Record<TouchControlId, TouchControlMeta> = {
   breathing3: { id: 'breathing3', label: 'Form Slot 3', baseSize: 44 },
   breathing4: { id: 'breathing4', label: 'Form Slot 4', baseSize: 44 },
   awakening: { id: 'awakening', label: 'Awakening', baseSize: 44 },
+  transparentWorld: { id: 'transparentWorld', label: 'See-Through World', baseSize: 42 },
   ultimate: { id: 'ultimate', label: 'Ultimate', baseSize: 44 },
 };
 
 export const DEFAULT_CONTROLS_LAYOUT: TouchControlsLayout = {
-  moveLeft: { xPct: 7.5, yPct: 83, scale: 1 },
-  moveRight: { xPct: 17.5, yPct: 83, scale: 1 },
-  dodge: { xPct: 57, yPct: 84, scale: 1 },
-  jump: { xPct: 65, yPct: 84, scale: 1 },
-  block: { xPct: 73.5, yPct: 84, scale: 1 },
-  heavy: { xPct: 82.5, yPct: 83, scale: 1 },
-  light: { xPct: 92, yPct: 82, scale: 1 },
-  breathing1: { xPct: 61, yPct: 64, scale: 1 },
-  breathing2: { xPct: 68.75, yPct: 64, scale: 1 },
-  breathing3: { xPct: 76.5, yPct: 64, scale: 1 },
-  breathing4: { xPct: 84.25, yPct: 64, scale: 1 },
-  awakening: { xPct: 92, yPct: 64, scale: 1 },
-  ultimate: { xPct: 52.5, yPct: 64, scale: 1 },
+  moveLeft: { xPct: 7.5, yPct: 81, scale: 1 },
+  moveRight: { xPct: 17.5, yPct: 81, scale: 1 },
+  dodge: { xPct: 57, yPct: 82, scale: 1 },
+  jump: { xPct: 65, yPct: 82, scale: 1 },
+  block: { xPct: 73.5, yPct: 82, scale: 1 },
+  heavy: { xPct: 82.5, yPct: 81, scale: 1 },
+  light: { xPct: 92, yPct: 80, scale: 1 },
+  breathing1: { xPct: 61, yPct: 62, scale: 1 },
+  breathing2: { xPct: 68.75, yPct: 62, scale: 1 },
+  breathing3: { xPct: 76.5, yPct: 62, scale: 1 },
+  breathing4: { xPct: 84.25, yPct: 62, scale: 1 },
+  awakening: { xPct: 92, yPct: 62, scale: 1 },
+  transparentWorld: { xPct: 44.5, yPct: 62, scale: 1 },
+  ultimate: { xPct: 52.5, yPct: 62, scale: 1 },
 };
 
 export function cloneDefaultControlsLayout(): TouchControlsLayout {
@@ -70,11 +73,11 @@ export function sanitizeControlItem(
   if (!raw || typeof raw !== 'object') return { ...def };
   const xPct =
     typeof raw.xPct === 'number' && Number.isFinite(raw.xPct)
-      ? Math.max(3, Math.min(97, raw.xPct))
+      ? Math.max(4, Math.min(96, raw.xPct))
       : def.xPct;
   const yPct =
     typeof raw.yPct === 'number' && Number.isFinite(raw.yPct)
-      ? Math.max(12, Math.min(94, raw.yPct))
+      ? Math.max(12, Math.min(91, raw.yPct))
       : def.yPct;
   const scale =
     typeof raw.scale === 'number' && Number.isFinite(raw.scale)
@@ -98,18 +101,22 @@ export function getControlPixelRect(
   id: TouchControlId,
   cfg: TouchControlItemConfig,
   viewW: number,
-  viewH: number
+  viewH: number,
+  safeInsets?: { left?: number; right?: number; bottom?: number; top?: number }
 ): { cx: number; cy: number; size: number; half: number } {
   const w = Math.max(320, viewW);
   const h = Math.max(240, viewH);
   // Subtle responsive size adaptation for very short landscape screens (< 400px tall)
-  const responsiveBase = h < 400 ? Math.max(0.86, h / 410) : 1;
+  const responsiveBase = h < 400 ? Math.max(0.84, h / 415) : 1;
   const size = Math.round(TOUCH_CONTROL_META[id].baseSize * responsiveBase * cfg.scale);
   const half = size * 0.5;
-  const padX = 6;
-  const minY = Math.max(54, half + 6);
-  const maxY = Math.max(minY, h - half - 6);
-  const cx = Math.max(half + padX, Math.min(w - half - padX, (cfg.xPct / 100) * w));
+  const padL = 8 + (safeInsets?.left ?? 0);
+  const padR = 8 + (safeInsets?.right ?? 0);
+  const padB = 10 + (safeInsets?.bottom ?? 0);
+  const padT = Math.max(54, half + 8 + (safeInsets?.top ?? 0));
+  const minY = padT;
+  const maxY = Math.max(minY, h - half - padB);
+  const cx = Math.max(half + padL, Math.min(w - half - padR, (cfg.xPct / 100) * w));
   const cy = Math.max(minY, Math.min(maxY, (cfg.yPct / 100) * h));
   return { cx, cy, size, half };
 }
@@ -125,12 +132,12 @@ export function clampControlToViewport(
   const w = Math.max(320, viewW);
   const h = Math.max(240, viewH);
   const clampedScale = Math.max(0.7, Math.min(1.45, Math.round(scale * 100) / 100));
-  const responsiveBase = h < 400 ? Math.max(0.86, h / 410) : 1;
+  const responsiveBase = h < 400 ? Math.max(0.84, h / 415) : 1;
   const half = (TOUCH_CONTROL_META[id].baseSize * responsiveBase * clampedScale) * 0.5;
-  const minX = half + 6;
-  const maxX = Math.max(minX, w - half - 6);
-  const minY = Math.max(54, half + 6);
-  const maxY = Math.max(minY, h - half - 6);
+  const minX = half + 8;
+  const maxX = Math.max(minX, w - half - 8);
+  const minY = Math.max(54, half + 8);
+  const maxY = Math.max(minY, h - half - 10);
 
   const clampedX = Math.max(minX, Math.min(maxX, cx));
   const clampedY = Math.max(minY, Math.min(maxY, cy));

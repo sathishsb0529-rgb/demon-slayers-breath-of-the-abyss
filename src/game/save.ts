@@ -2,15 +2,24 @@ import { AWAKENING_SPECS, getUnlockedAwakeningsForLevel } from './breathing';
 import { getCharacterById } from './characters';
 import { cloneDefaultControlsLayout, sanitizeControlsLayout } from './controlsLayout';
 import {
+  AchievementDef,
   AudioSettings,
   AwakeningTierId,
   BreathingStyleId,
   CharacterProfile,
   CharacterUpgrades,
+  CombatRank,
+  DailyMissionState,
+  DifficultyMode,
   GameplaySettings,
+  LevelMilestoneDef,
+  PlayerStatistics,
   SaveData,
+  SecretBossDef,
   SurvivalStats,
+  SwordUpgrades,
   TouchControlsLayout,
+  TrainingChallengeDef,
   UltimateId,
 } from './types';
 
@@ -47,8 +56,121 @@ function sanitizeGameplaySettings(raw?: Partial<GameplaySettings>): GameplaySett
   };
 }
 
+export const MAX_PLAYER_LEVEL = 50;
+export const MAX_TOTAL_XP = 1500;
+
+// 49 level-up steps (Lv.1->2 .. Lv.49->50) summing strictly to 1500 XP
+export const LEVEL_XP_STEPS: readonly number[] = [
+  16, 16, 17, 17, 18, 19, 19, 20,
+  21, 21, 22, 22, 23, 24, 24, 25,
+  26, 26, 27, 27, 28, 29, 29, 30,
+  31, 31, 32, 32, 33, 34, 34, 35,
+  36, 36, 37, 37, 38, 39, 39, 40,
+  41, 41, 42, 42, 43, 44, 44, 46,
+  47,
+];
+
+export const LEVEL_MILESTONES: LevelMilestoneDef[] = [
+  { level: 5, title: 'Total Concentration Reflex', description: 'Sharper blade timing against sudden lunges.', effectSummary: '+0.08s Parry / Counter Window' },
+  { level: 10, title: 'Demon Slayer Mark Resonance', description: 'Awakens Slayer Mark resonance and surges form potency.', effectSummary: '+8% Breathing Form Damage' },
+  { level: 15, title: 'Constant Breathing Circulation', description: 'Maintain Total Concentration without conscious strain.', effectSummary: '+1.2 Energy Regen/s' },
+  { level: 20, title: 'Crimson Red Blade Mastery', description: 'Ignites nichirin steel, strengthening guard & burn.', effectSummary: '+6% Damage Mitigation & Burn' },
+  { level: 25, title: 'Unbroken Corps Spirit', description: 'Enter every duel with charged lung capacity.', effectSummary: '+20 Starting Breathing Energy' },
+  { level: 30, title: 'Transparent World Perception', description: 'Strike demon weak points exposed during boss battles.', effectSummary: '+10% Boss Crit & Transparent World Mastery' },
+  { level: 35, title: 'Selfless State Footwork', description: 'Vanish from demon bloodlust sensors mid-evasion.', effectSummary: '+0.06s Dodge i-Frames' },
+  { level: 40, title: 'Hashira Flow Recovery', description: 'Rapidly reset sword stance between heavy techniques.', effectSummary: '-15% Heavy, Form & Ultimate Cooldowns' },
+  { level: 45, title: 'Pillar Body Conditioning', description: 'Hashira-grade endurance for prolonged boss phases.', effectSummary: '+65 Max HP & +6% Attack Power' },
+  { level: 50, title: 'Transcendent Sun Peak', description: 'Pinnacle Slayer mastery. Unlocks Abyssal Boss Difficulty.', effectSummary: '+10% All Combat Stats & Abyssal Mode' },
+];
+
+export function getMilestoneBonuses(level: number): {
+  counterWindowBonus: number;
+  formDamageBonus: number;
+  energyRegenBonus: number;
+  defenseBonus: number;
+  startingEnergyBonus: number;
+  bossDamageBonus: number;
+  dodgeIFrameBonus: number;
+  cooldownReduction: number;
+  maxHpBonus: number;
+  attackPowerBonus: number;
+} {
+  const lv = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(level)));
+  const lv50Bonus = lv >= 50 ? 0.1 : 0;
+  return {
+    counterWindowBonus: lv >= 5 ? 0.08 : 0,
+    formDamageBonus: (lv >= 10 ? 0.08 : 0) + lv50Bonus,
+    energyRegenBonus: lv >= 15 ? 1.2 + (lv >= 50 ? 0.8 : 0) : 0,
+    defenseBonus: (lv >= 20 ? 0.06 : 0) + (lv >= 50 ? 0.04 : 0),
+    startingEnergyBonus: lv >= 25 ? 20 : 0,
+    bossDamageBonus: lv >= 30 ? 0.1 : 0,
+    dodgeIFrameBonus: lv >= 35 ? 0.06 : 0,
+    cooldownReduction: lv >= 40 ? 0.15 : 0,
+    maxHpBonus: (lv >= 45 ? 65 : 0) + (lv >= 50 ? 35 : 0),
+    attackPowerBonus: (lv >= 45 ? 0.06 : 0) + lv50Bonus,
+  };
+}
+
+export const RANK_WEIGHT: Record<CombatRank, number> = {
+  D: 1,
+  C: 2,
+  B: 3,
+  A: 4,
+  S: 5,
+  SS: 6,
+  SSS: 7,
+};
+
+export function calculateCombatRank(params: {
+  hpPct: number;
+  perfectDodges: number;
+  damageTaken: number;
+  maxCombo: number;
+  matchTime: number;
+  breathingKills: number;
+}): CombatRank {
+  let score = 0;
+  if (params.hpPct >= 0.95) score += 40;
+  else if (params.hpPct >= 0.78) score += 32;
+  else if (params.hpPct >= 0.55) score += 23;
+  else if (params.hpPct >= 0.3) score += 14;
+  else score += 6;
+
+  if (params.damageTaken === 0) score += 26;
+  else if (params.damageTaken <= 25) score += 16;
+  else if (params.damageTaken <= 70) score += 8;
+
+  score += Math.min(20, params.perfectDodges * 6);
+  score += Math.min(14, Math.floor(params.maxCombo / 2) * 2);
+  if (params.breathingKills > 0) score += 8;
+  if (params.matchTime <= 45) score += 10;
+  else if (params.matchTime <= 75) score += 5;
+
+  if (score >= 92) return 'SSS';
+  if (score >= 78) return 'SS';
+  if (score >= 64) return 'S';
+  if (score >= 48) return 'A';
+  if (score >= 34) return 'B';
+  if (score >= 20) return 'C';
+  return 'D';
+}
+
 export function getXpForNextLevel(level: number): number {
-  return 80 + (Math.max(1, Math.floor(level)) - 1) * 55;
+  const lv = Math.max(1, Math.floor(level));
+  if (lv >= MAX_PLAYER_LEVEL) return 0;
+  return LEVEL_XP_STEPS[lv - 1] ?? 47;
+}
+
+export function getTotalXpForProfile(level: number, xp: number): number {
+  const lv = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(level)));
+  let total = 0;
+  for (let i = 0; i < lv - 1; i++) {
+    total += LEVEL_XP_STEPS[i] ?? 0;
+  }
+  if (lv < MAX_PLAYER_LEVEL) {
+    total += Math.max(0, Math.min(getXpForNextLevel(lv) - 1, Math.floor(xp)));
+  }
+  return Math.min(MAX_TOTAL_XP, total);
 }
 
 export function applyXpToProfile(
@@ -59,21 +181,30 @@ export function applyXpToProfile(
   leveledUp: boolean;
   newLevel: number;
   newlyUnlockedAwakenings: AwakeningTierId[];
+  unlockedMilestones: LevelMilestoneDef[];
 } {
   const safeGain = Math.max(0, Math.floor(xpGain));
-  let level = Math.max(1, Math.floor(profile.playerLevel || 1));
-  let xp = Math.max(0, Math.floor(profile.playerXp || 0)) + safeGain;
+  let level = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(profile.playerLevel || 1)));
+  let xp = level >= MAX_PLAYER_LEVEL ? 0 : Math.max(0, Math.floor(profile.playerXp || 0)) + safeGain;
   const startLevel = level;
 
-  while (xp >= getXpForNextLevel(level) && level < 99) {
-    xp -= getXpForNextLevel(level);
+  while (level < MAX_PLAYER_LEVEL) {
+    const needed = getXpForNextLevel(level);
+    if (needed <= 0 || xp < needed) break;
+    xp -= needed;
     level += 1;
+  }
+
+  if (level >= MAX_PLAYER_LEVEL) {
+    level = MAX_PLAYER_LEVEL;
+    xp = 0;
   }
 
   const levelUnlocks = getUnlockedAwakeningsForLevel(level);
   const prevUnlocked = new Set<AwakeningTierId>(['mark', ...profile.unlockedAwakenings]);
   const newlyUnlockedAwakenings = levelUnlocks.filter((id) => !prevUnlocked.has(id));
   const mergedAwakenings = Array.from(new Set<AwakeningTierId>(['mark', ...profile.unlockedAwakenings, ...levelUnlocks]));
+  const unlockedMilestones = LEVEL_MILESTONES.filter((m) => m.level > startLevel && m.level <= level);
 
   return {
     profile: {
@@ -85,7 +216,179 @@ export function applyXpToProfile(
     leveledUp: level > startLevel,
     newLevel: level,
     newlyUnlockedAwakenings,
+    unlockedMilestones,
   };
+}
+
+export const DEFAULT_PLAYER_STATS: PlayerStatistics = {
+  demonsDefeated: 0,
+  bossesDefeated: 0,
+  levelsCleared: 0,
+  perfectDodges: 0,
+  noDamageWins: 0,
+  breathingFinishers: 0,
+  chestsFound: 0,
+  sssRanks: 0,
+  trainingCompleted: 0,
+  secretBossesCleared: 0,
+  totalDamageDealt: 0,
+};
+
+export const ACHIEVEMENTS: AchievementDef[] = [
+  { id: 'ach_slayer_10', title: 'Demon Hunter Initiate', description: 'Defeat 10 demons across any mode.', target: 10, rewardCoins: 90, rewardXp: 35, metric: 'demonsDefeated' },
+  { id: 'ach_slayer_50', title: 'Corps Vanguard', description: 'Defeat 50 demons across any mode.', target: 50, rewardCoins: 240, rewardXp: 70, metric: 'demonsDefeated' },
+  { id: 'ach_boss_5', title: 'Twelve Kizuki Bane', description: 'Defeat 5 major Demon Bosses.', target: 5, rewardCoins: 180, rewardXp: 55, metric: 'bossesDefeated' },
+  { id: 'ach_dodge_15', title: 'Ghost Step Mastery', description: 'Execute 15 Perfect Dodges.', target: 15, rewardCoins: 150, rewardXp: 45, metric: 'perfectDodges' },
+  { id: 'ach_nodmg_3', title: 'Untouchable Hashira', description: 'Win 3 battles without taking any damage.', target: 3, rewardCoins: 220, rewardXp: 65, metric: 'noDamageWins' },
+  { id: 'ach_finisher_10', title: 'Final Form Executioner', description: 'Finish 10 encounters with a Breathing Form or Ultimate.', target: 10, rewardCoins: 160, rewardXp: 50, metric: 'breathingFinishers' },
+  { id: 'ach_chests_8', title: 'Dungeon Treasure Seeker', description: 'Discover 8 secret chests or exploration caches.', target: 8, rewardCoins: 140, rewardXp: 40, metric: 'chestsFound' },
+  { id: 'ach_sss_3', title: 'Pinnacle SSS Rank', description: 'Earn SSS Combat Rank in 3 battles.', target: 3, rewardCoins: 260, rewardXp: 80, metric: 'sssRanks' },
+  { id: 'ach_training_all', title: 'Master of Trials', description: 'Complete 4 Hashira Training Challenges.', target: 4, rewardCoins: 200, rewardXp: 60, metric: 'trainingCompleted' },
+  { id: 'ach_secret_boss', title: 'Shadow Horizon', description: 'Defeat a Hidden Secret Boss.', target: 1, rewardCoins: 350, rewardXp: 100, metric: 'secretBossesCleared' },
+];
+
+export const TRAINING_CHALLENGES: TrainingChallengeDef[] = [
+  {
+    id: 'train_dodge',
+    title: 'Phantom Evasion Trial',
+    subtitle: 'Perfect Dodge Conditioning',
+    description: 'Survive and defeat an aggressive Fast Claw Demon using rapid dashes and aerial evasions.',
+    mapId: 'mountain_training',
+    enemyArchetype: 'fast',
+    enemyName: 'Crimson Fang Runner (Trial)',
+    rewardCoins: 75,
+    rewardXp: 40,
+    ruleTag: 'perfect_dodge_trial',
+  },
+  {
+    id: 'train_parry',
+    title: 'Iron Guard & Counter Drill',
+    subtitle: 'Heavy Guard Conditioning',
+    description: 'Break through an Armored Tank Demon with parries, counters, and heavy overhead cleaves.',
+    mapId: 'hashira_grounds',
+    enemyArchetype: 'strong',
+    enemyName: 'Iron Carapace Hulk (Trial)',
+    rewardCoins: 90,
+    rewardXp: 45,
+    ruleTag: 'parry_mastery',
+  },
+  {
+    id: 'train_forms',
+    title: 'Total Concentration Chain',
+    subtitle: 'Breathing Style Flow',
+    description: 'Overwhelm a regenerating swamp fiend using chained Breathing Forms before it heals.',
+    mapId: 'poisonous_forest',
+    enemyArchetype: 'regenerating',
+    enemyName: 'Blight HydraFiend (Trial)',
+    rewardCoins: 105,
+    rewardXp: 55,
+    ruleTag: 'form_chain',
+  },
+  {
+    id: 'train_upper_phase',
+    title: 'Upper Rank Combat Simulation',
+    subtitle: 'Multi-Phase Adaptation Drill',
+    description: 'Confront Akaza’s martial arts phantom to rehearse 75% / 50% / 25% phase shifts.',
+    mapId: 'infinity_castle',
+    enemyArchetype: 'boss_akaza',
+    enemyName: 'Akaza · Compass Phantom',
+    rewardCoins: 150,
+    rewardXp: 70,
+    ruleTag: 'boss_phase_drill',
+  },
+];
+
+export const SECRET_BOSSES: SecretBossDef[] = [
+  {
+    id: 'secret_hantengu_merged',
+    title: 'Hidden Vault: Merged Hantengu',
+    subtitle: 'Underground Abyssal Sanctum',
+    description: 'A forbidden underground sanctuary hiding the fused hatred manifestation of Upper Moon Four.',
+    mapId: 'underground_tunnel',
+    unlockRequirementLabel: 'Clear Level 18 or reach Slayer Lv.15',
+    minLevel: 18,
+    minPlayerLevel: 15,
+    enemy: {
+      archetype: 'hantengu_merged',
+      name: 'Hantengu · Merged Hatred',
+      subtitle: 'Secret Upper Four Sanctuary',
+      hpScale: 1.25,
+      damageScale: 1.2,
+      isBoss: true,
+    },
+    rewardCoins: 320,
+    rewardXp: 110,
+  },
+  {
+    id: 'secret_kokushibo_moon',
+    title: 'Eclipse Chamber: Kokushibo Awakened',
+    subtitle: 'Six-Eyed Moon Calamity',
+    description: 'Face Upper Moon One unleashing relentless crescent moon storms inside the Haunted Temple.',
+    mapId: 'haunted_temple',
+    unlockRequirementLabel: 'Clear Level 35 or reach Slayer Lv.30',
+    minLevel: 35,
+    minPlayerLevel: 30,
+    enemy: {
+      archetype: 'kokushibo_demon',
+      name: 'Kokushibo · Eclipse Blade',
+      subtitle: 'Secret Upper One Duel',
+      hpScale: 1.32,
+      damageScale: 1.25,
+      isBoss: true,
+    },
+    rewardCoins: 460,
+    rewardXp: 145,
+  },
+  {
+    id: 'secret_demon_king_tanjiro',
+    title: 'Crimson Horizon: Demon King Heir',
+    subtitle: 'Final Fortress What-If Anomaly',
+    description: 'An apex secret encounter against the Demon King inheritor inside Muzan’s burning stronghold.',
+    mapId: 'final_fortress',
+    unlockRequirementLabel: 'Clear Level 50 or reach Slayer Lv.45',
+    minLevel: 50,
+    minPlayerLevel: 45,
+    enemy: {
+      archetype: 'demon_king_tanjiro',
+      name: 'Demon King Tanjiro · Abyssal Heir',
+      subtitle: 'Supreme Secret Boss',
+      hpScale: 1.45,
+      damageScale: 1.32,
+      isBoss: true,
+    },
+    rewardCoins: 680,
+    rewardXp: 180,
+  },
+];
+
+export function getTodayDateKey(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function generateDailyMissions(dateKey = getTodayDateKey()): DailyMissionState[] {
+  const pool: Omit<DailyMissionState, 'progress' | 'claimed'>[] = [
+    { id: 'dm_slay_5', title: 'Night Patrol', description: 'Defeat 5 demons in any mode.', target: 5, rewardCoins: 75, rewardXp: 35, metric: 'demons_defeated' },
+    { id: 'dm_clear_2', title: 'Frontline Advance', description: 'Clear 2 Story or Free Battles.', target: 2, rewardCoins: 85, rewardXp: 40, metric: 'levels_cleared' },
+    { id: 'dm_dodge_4', title: 'Flowing Footwork', description: 'Perform 4 Perfect Dodges.', target: 4, rewardCoins: 70, rewardXp: 35, metric: 'perfect_dodges' },
+    { id: 'dm_finish_2', title: 'Breath Finisher', description: 'Win 2 fights with Breathing or Ultimate.', target: 2, rewardCoins: 90, rewardXp: 45, metric: 'breathing_finishers' },
+    { id: 'dm_chest_2', title: 'Hidden Supplies', description: 'Open 2 Secret Chests or Caches.', target: 2, rewardCoins: 80, rewardXp: 35, metric: 'chests_found' },
+    { id: 'dm_boss_1', title: 'Kizuki Hunt', description: 'Defeat 1 Demon Boss.', target: 1, rewardCoins: 110, rewardXp: 55, metric: 'bosses_defeated' },
+  ];
+  let hash = 0;
+  for (let i = 0; i < dateKey.length; i++) hash = (hash * 31 + dateKey.charCodeAt(i)) >>> 0;
+  const picks: DailyMissionState[] = [];
+  const used = new Set<number>();
+  for (let k = 0; k < 3; k++) {
+    let idx = (hash + k * 7) % pool.length;
+    while (used.has(idx)) idx = (idx + 1) % pool.length;
+    used.add(idx);
+    picks.push({ ...pool[idx], progress: 0, claimed: false });
+  }
+  return picks;
 }
 
 export function createDefaultCharacterProfile(charId: string): CharacterProfile {
@@ -106,8 +409,11 @@ export function createDefaultCharacterProfile(charId: string): CharacterProfile 
     unlockedUltimates: ['eternal_sun'],
     equippedUltimate: 'eternal_sun',
     upgrades: { vitality: 0, blade: 0, defense: 0, breathing: 0 },
+    swordUpgrades: { edge: 0, alloy: 0, tsuba: 0, scabbard: 0 },
     totalDemonsDefeated: 0,
     storyChoices: {},
+    completedTrainingIds: [],
+    clearedSecretBossIds: [],
   };
 }
 
@@ -134,12 +440,15 @@ function sanitizeProfile(charId: string, raw?: Partial<CharacterProfile>): Chara
 
   const playerLevel =
     typeof raw.playerLevel === 'number' && Number.isFinite(raw.playerLevel) && raw.playerLevel >= 1
-      ? Math.max(1, Math.min(99, Math.floor(raw.playerLevel)))
-      : Math.max(1, Math.floor((highestUnlockedLevel - 1) / 3) + 1, Math.floor(totalDemonsDefeated / 4) + 1);
+      ? Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(raw.playerLevel)))
+      : Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor((highestUnlockedLevel - 1) / 3) + 1));
+  const nextReq = getXpForNextLevel(playerLevel);
   const playerXp =
-    typeof raw.playerXp === 'number' && Number.isFinite(raw.playerXp) && raw.playerXp >= 0
-      ? Math.min(getXpForNextLevel(playerLevel) - 1, Math.floor(raw.playerXp))
-      : 0;
+    playerLevel >= MAX_PLAYER_LEVEL
+      ? 0
+      : typeof raw.playerXp === 'number' && Number.isFinite(raw.playerXp) && raw.playerXp >= 0
+        ? Math.min(Math.max(0, nextReq - 1), Math.floor(raw.playerXp))
+        : 0;
 
   const levelUnlocks = getUnlockedAwakeningsForLevel(playerLevel);
   const unlockedAwakenings = Array.isArray(raw.unlockedAwakenings)
@@ -177,9 +486,17 @@ function sanitizeProfile(charId: string, raw?: Partial<CharacterProfile>): Chara
       defense: Math.max(0, Math.min(5, Math.floor(raw.upgrades?.defense ?? 0))),
       breathing: Math.max(0, Math.min(5, Math.floor(raw.upgrades?.breathing ?? 0))),
     },
+    swordUpgrades: {
+      edge: Math.max(0, Math.min(5, Math.floor(raw.swordUpgrades?.edge ?? 0))),
+      alloy: Math.max(0, Math.min(5, Math.floor(raw.swordUpgrades?.alloy ?? 0))),
+      tsuba: Math.max(0, Math.min(5, Math.floor(raw.swordUpgrades?.tsuba ?? 0))),
+      scabbard: Math.max(0, Math.min(5, Math.floor(raw.swordUpgrades?.scabbard ?? 0))),
+    },
     totalDemonsDefeated,
     storyChoices:
       raw.storyChoices && typeof raw.storyChoices === 'object' ? { ...raw.storyChoices } : {},
+    completedTrainingIds: Array.isArray(raw.completedTrainingIds) ? [...raw.completedTrainingIds] : [],
+    clearedSecretBossIds: Array.isArray(raw.clearedSecretBossIds) ? [...raw.clearedSecretBossIds] : [],
   };
 }
 
@@ -237,6 +554,12 @@ export const DEFAULT_SAVE: SaveData = {
   unlockedDemonSkins: {},
   equippedDemonSkins: {},
   survivalStats: { ...DEFAULT_SURVIVAL_STATS },
+  selectedDifficulty: 'standard',
+  dailyMissionDate: getTodayDateKey(),
+  dailyMissions: generateDailyMissions(),
+  claimedAchievements: [],
+  demonKillCounts: {},
+  playerStats: { ...DEFAULT_PLAYER_STATS },
 };
 
 export function getCharacterProfile(save: SaveData, charId?: string): CharacterProfile {
@@ -258,6 +581,9 @@ export function loadSaveData(): SaveData {
         gameplay: { ...DEFAULT_GAMEPLAY },
         controlsLayout: cloneDefaultControlsLayout(),
         characterProfiles: { tanjiro: freshProfile },
+        dailyMissionDate: getTodayDateKey(),
+        dailyMissions: generateDailyMissions(),
+        playerStats: { ...DEFAULT_PLAYER_STATS },
       };
     }
 
@@ -282,8 +608,6 @@ export function loadSaveData(): SaveData {
       }
     }
 
-    // Backwards-compatible migration from legacy v2 saves without characterProfiles:
-    // Migrate existing progress exclusively into the active character without polluting other characters!
     if (!characterProfiles[selectedChar]) {
       const charDef = getCharacterById(selectedChar);
       characterProfiles[selectedChar] = sanitizeProfile(selectedChar, {
@@ -297,6 +621,32 @@ export function loadSaveData(): SaveData {
         totalDemonsDefeated: typeof parsed.totalDemonsDefeated === 'number' ? parsed.totalDemonsDefeated : 0,
       });
     }
+
+    const todayKey = getTodayDateKey();
+    const isSameDay = parsed.dailyMissionDate === todayKey && Array.isArray(parsed.dailyMissions) && parsed.dailyMissions.length === 3;
+    const dailyMissions = isSameDay ? (parsed.dailyMissions as DailyMissionState[]) : generateDailyMissions(todayKey);
+
+    const rawStats: Partial<PlayerStatistics> =
+      parsed.playerStats && typeof parsed.playerStats === 'object' ? parsed.playerStats : {};
+    const playerStats: PlayerStatistics = {
+      demonsDefeated: Math.max(0, Math.floor(rawStats.demonsDefeated ?? characterProfiles[selectedChar].totalDemonsDefeated ?? 0)),
+      bossesDefeated: Math.max(0, Math.floor(rawStats.bossesDefeated ?? 0)),
+      levelsCleared: Math.max(0, Math.floor(rawStats.levelsCleared ?? Object.keys(characterProfiles[selectedChar].levelBestRanks).length)),
+      perfectDodges: Math.max(0, Math.floor(rawStats.perfectDodges ?? 0)),
+      noDamageWins: Math.max(0, Math.floor(rawStats.noDamageWins ?? 0)),
+      breathingFinishers: Math.max(0, Math.floor(rawStats.breathingFinishers ?? 0)),
+      chestsFound: Math.max(0, Math.floor(rawStats.chestsFound ?? 0)),
+      sssRanks: Math.max(0, Math.floor(rawStats.sssRanks ?? 0)),
+      trainingCompleted: Math.max(0, Math.floor(rawStats.trainingCompleted ?? 0)),
+      secretBossesCleared: Math.max(0, Math.floor(rawStats.secretBossesCleared ?? 0)),
+      totalDamageDealt: Math.max(0, Math.floor(rawStats.totalDamageDealt ?? 0)),
+    };
+
+    const validDiff: DifficultyMode[] = ['standard', 'hard', 'nightmare', 'abyssal'];
+    const selectedDifficulty: DifficultyMode =
+      parsed.selectedDifficulty && validDiff.includes(parsed.selectedDifficulty)
+        ? parsed.selectedDifficulty
+        : 'standard';
 
     const baseSave: SaveData = {
       coins: characterProfiles[selectedChar].coins,
@@ -341,6 +691,15 @@ export function loadSaveData(): SaveData {
         bestCoinsRun: Math.max(0, Math.floor(parsed.survivalStats?.bestCoinsRun ?? 0)),
         runsCompleted: Math.max(0, Math.floor(parsed.survivalStats?.runsCompleted ?? 0)),
       },
+      selectedDifficulty,
+      dailyMissionDate: todayKey,
+      dailyMissions,
+      claimedAchievements: Array.isArray(parsed.claimedAchievements) ? [...parsed.claimedAchievements] : [],
+      demonKillCounts:
+        parsed.demonKillCounts && typeof parsed.demonKillCounts === 'object'
+          ? { ...parsed.demonKillCounts }
+          : {},
+      playerStats,
     };
 
     return syncTopLevelWithActiveProfile(baseSave);
@@ -357,6 +716,11 @@ export function loadSaveData(): SaveData {
       unlockedDemonSkins: {},
       equippedDemonSkins: {},
       survivalStats: { ...DEFAULT_SURVIVAL_STATS },
+      dailyMissionDate: getTodayDateKey(),
+      dailyMissions: generateDailyMissions(),
+      claimedAchievements: [],
+      demonKillCounts: {},
+      playerStats: { ...DEFAULT_PLAYER_STATS },
     };
   }
 }
@@ -494,6 +858,73 @@ export const UPGRADE_STAT_META: Array<{
 
 export function getUpgradeCost(currentLevel: number): number {
   return 65 + currentLevel * 55;
+}
+
+export const SWORD_UPGRADE_META: Array<{
+  key: keyof SwordUpgrades;
+  label: string;
+  shortLabel: string;
+  bonusPerLevelLabel: string;
+  description: string;
+}> = [
+  {
+    key: 'edge',
+    label: 'Honed Nichirin Edge',
+    shortLabel: 'Edge',
+    bonusPerLevelLabel: '+7% Slash Power',
+    description: 'Sharpens katana light/heavy slashes and execution strike output.',
+  },
+  {
+    key: 'alloy',
+    label: 'Scarlet Crimson Ore',
+    shortLabel: 'Alloy',
+    bonusPerLevelLabel: '+10% Form Damage',
+    description: 'Amplifies Breathing Form damage and demon guard breaking.',
+  },
+  {
+    key: 'tsuba',
+    label: 'Forged Tsuba Balance',
+    shortLabel: 'Tsuba',
+    bonusPerLevelLabel: '+5% Guard & +0.06s Counter',
+    description: 'Widens sword parry counter windows and hardens blocking.',
+  },
+  {
+    key: 'scabbard',
+    label: 'Quick-Draw Scabbard',
+    shortLabel: 'Scabbard',
+    bonusPerLevelLabel: '-6% Skill Cooldowns',
+    description: 'Reduces recovery cooldowns across Heavy, Breathing Forms, and Ultimates.',
+  },
+];
+
+export function getSwordUpgradeCost(currentLevel: number): number {
+  return 75 + currentLevel * 65;
+}
+
+export function upgradeSwordStat(
+  save: SaveData,
+  charId: string,
+  stat: keyof SwordUpgrades
+): { ok: boolean; save: SaveData; message: string } {
+  const target = getCharacterProfile(save, charId);
+  const curr = target.swordUpgrades?.[stat] ?? 0;
+  if (curr >= 5) {
+    return { ok: false, save, message: 'Sword Forging already at Masterwork Tier V.' };
+  }
+  const cost = getSwordUpgradeCost(curr);
+  if (target.coins < cost) {
+    return { ok: false, save, message: `Need ${cost - target.coins} more Coins.` };
+  }
+  const statLabel = SWORD_UPGRADE_META.find((m) => m.key === stat)?.label ?? stat.toUpperCase();
+  const updated = updateProfileForChar(save, charId, (p) => ({
+    ...p,
+    coins: p.coins - cost,
+    swordUpgrades: {
+      ...(p.swordUpgrades ?? { edge: 0, alloy: 0, tsuba: 0, scabbard: 0 }),
+      [stat]: curr + 1,
+    },
+  }));
+  return { ok: true, save: updated, message: `Forged ${statLabel} to Tier ${curr + 1}!` };
 }
 
 export function upgradeCharacterStat(
@@ -777,7 +1208,7 @@ export function resetControlsLayout(save: SaveData): SaveData {
   return updated;
 }
 
-export function recordTutorialCompleted(save: SaveData, bonusCoins = 80): SaveData {
+export function recordTutorialCompleted(save: SaveData, bonusCoins = 50): SaveData {
   return updateActiveProfile(save, (p) => {
     const withReward: CharacterProfile = {
       ...p,
@@ -785,30 +1216,169 @@ export function recordTutorialCompleted(save: SaveData, bonusCoins = 80): SaveDa
       coins: p.coins + (p.tutorialCompleted ? 15 : bonusCoins),
       highestUnlockedLevel: Math.max(1, p.highestUnlockedLevel),
     };
-    return applyXpToProfile(withReward, p.tutorialCompleted ? 35 : 75).profile;
+    return applyXpToProfile(withReward, p.tutorialCompleted ? 15 : 30).profile;
+  });
+}
+
+export function setDifficultyMode(save: SaveData, difficulty: DifficultyMode): SaveData {
+  const updated: SaveData = { ...save, selectedDifficulty: difficulty };
+  writeSaveData(updated);
+  return updated;
+}
+
+export function applyRunStatisticsAndMissions(
+  save: SaveData,
+  delta: {
+    demonsDefeated?: number;
+    bossesDefeated?: number;
+    levelsCleared?: number;
+    perfectDodges?: number;
+    noDamageWins?: number;
+    breathingFinishers?: number;
+    chestsFound?: number;
+    sssRanks?: number;
+    trainingCompleted?: number;
+    secretBossesCleared?: number;
+    totalDamageDealt?: number;
+    killedArchetypes?: string[];
+  }
+): SaveData {
+  const today = getTodayDateKey();
+  const currentMissions =
+    save.dailyMissionDate === today && save.dailyMissions.length === 3
+      ? save.dailyMissions
+      : generateDailyMissions(today);
+
+  const metricAdd: Record<DailyMissionState['metric'], number> = {
+    demons_defeated: delta.demonsDefeated ?? 0,
+    levels_cleared: delta.levelsCleared ?? 0,
+    perfect_dodges: delta.perfectDodges ?? 0,
+    breathing_finishers: delta.breathingFinishers ?? 0,
+    chests_found: delta.chestsFound ?? 0,
+    bosses_defeated: delta.bossesDefeated ?? 0,
+  };
+
+  const nextMissions = currentMissions.map((m) => ({
+    ...m,
+    progress: Math.min(m.target, m.progress + (metricAdd[m.metric] ?? 0)),
+  }));
+
+  const prevStats = save.playerStats ?? DEFAULT_PLAYER_STATS;
+  const nextStats: PlayerStatistics = {
+    demonsDefeated: prevStats.demonsDefeated + (delta.demonsDefeated ?? 0),
+    bossesDefeated: prevStats.bossesDefeated + (delta.bossesDefeated ?? 0),
+    levelsCleared: prevStats.levelsCleared + (delta.levelsCleared ?? 0),
+    perfectDodges: prevStats.perfectDodges + (delta.perfectDodges ?? 0),
+    noDamageWins: prevStats.noDamageWins + (delta.noDamageWins ?? 0),
+    breathingFinishers: prevStats.breathingFinishers + (delta.breathingFinishers ?? 0),
+    chestsFound: prevStats.chestsFound + (delta.chestsFound ?? 0),
+    sssRanks: prevStats.sssRanks + (delta.sssRanks ?? 0),
+    trainingCompleted: prevStats.trainingCompleted + (delta.trainingCompleted ?? 0),
+    secretBossesCleared: prevStats.secretBossesCleared + (delta.secretBossesCleared ?? 0),
+    totalDamageDealt: prevStats.totalDamageDealt + (delta.totalDamageDealt ?? 0),
+  };
+
+  const nextKills = { ...(save.demonKillCounts ?? {}) };
+  for (const arch of delta.killedArchetypes ?? []) {
+    if (!arch) continue;
+    nextKills[arch] = (nextKills[arch] ?? 0) + 1;
+  }
+
+  const updated: SaveData = {
+    ...save,
+    dailyMissionDate: today,
+    dailyMissions: nextMissions,
+    playerStats: nextStats,
+    demonKillCounts: nextKills,
+  };
+  writeSaveData(updated);
+  return updated;
+}
+
+export function claimDailyMission(save: SaveData, missionId: string): { ok: boolean; save: SaveData; message: string } {
+  const mission = save.dailyMissions.find((m) => m.id === missionId);
+  if (!mission) return { ok: false, save, message: 'Mission not found.' };
+  if (mission.claimed) return { ok: false, save, message: 'Mission reward already claimed.' };
+  if (mission.progress < mission.target) return { ok: false, save, message: 'Mission not completed yet.' };
+
+  const withReward = updateActiveProfile(save, (p) => {
+    const nextCoins = p.coins + mission.rewardCoins;
+    return applyXpToProfile({ ...p, coins: nextCoins }, mission.rewardXp).profile;
+  });
+  const updated: SaveData = {
+    ...withReward,
+    dailyMissions: withReward.dailyMissions.map((m) => (m.id === missionId ? { ...m, claimed: true } : m)),
+  };
+  writeSaveData(updated);
+  return { ok: true, save: updated, message: `Claimed +${mission.rewardCoins} Coins & +${mission.rewardXp} XP!` };
+}
+
+export function claimAchievement(save: SaveData, achId: string): { ok: boolean; save: SaveData; message: string } {
+  if (save.claimedAchievements.includes(achId)) {
+    return { ok: false, save, message: 'Achievement already claimed.' };
+  }
+  const def = ACHIEVEMENTS.find((a) => a.id === achId);
+  if (!def) return { ok: false, save, message: 'Achievement not found.' };
+  const val = save.playerStats?.[def.metric] ?? 0;
+  if (val < def.target) return { ok: false, save, message: 'Requirement not met yet.' };
+
+  const withReward = updateActiveProfile(save, (p) =>
+    applyXpToProfile({ ...p, coins: p.coins + def.rewardCoins }, def.rewardXp).profile
+  );
+  const updated: SaveData = {
+    ...withReward,
+    claimedAchievements: [...withReward.claimedAchievements, achId],
+  };
+  writeSaveData(updated);
+  return { ok: true, save: updated, message: `Achievement Unlocked: +${def.rewardCoins} Coins & +${def.rewardXp} XP!` };
+}
+
+export function recordTrainingOrSecretClear(
+  save: SaveData,
+  params: { trainingId?: string; secretBossId?: string; coinsEarned: number; xpEarned: number }
+): SaveData {
+  return updateActiveProfile(save, (p) => {
+    const completedTrainingIds = params.trainingId
+      ? Array.from(new Set([...(p.completedTrainingIds ?? []), params.trainingId]))
+      : p.completedTrainingIds ?? [];
+    const clearedSecretBossIds = params.secretBossId
+      ? Array.from(new Set([...(p.clearedSecretBossIds ?? []), params.secretBossId]))
+      : p.clearedSecretBossIds ?? [];
+    return applyXpToProfile(
+      {
+        ...p,
+        coins: p.coins + Math.max(0, Math.floor(params.coinsEarned)),
+        completedTrainingIds,
+        clearedSecretBossIds,
+      },
+      params.xpEarned
+    ).profile;
   });
 }
 
 export function recordLevelVictory(
   save: SaveData,
   levelId: number,
-  rank: 'S' | 'A' | 'B',
+  rank: CombatRank,
   coinsEarned: number,
-  demonsDefeated: number
+  demonsDefeated: number,
+  xpEarned = 30
 ): SaveData {
-  const rankWeight = { B: 1, A: 2, S: 3 };
-  const xpGain = Math.max(60, 95 + levelId * 4 + demonsDefeated * 25);
+  const xpGain = Math.max(15, Math.floor(xpEarned));
   return updateActiveProfile(save, (p) => {
     const prevRank = p.levelBestRanks[levelId];
-    const bestRank = !prevRank || rankWeight[rank] > rankWeight[prevRank] ? rank : prevRank;
+    const bestRank = !prevRank || RANK_WEIGHT[rank] > RANK_WEIGHT[prevRank] ? rank : prevRank;
     const withReward: CharacterProfile = {
       ...p,
-      coins: p.coins + coinsEarned,
-      highestUnlockedLevel: Math.min(50, Math.max(p.highestUnlockedLevel, levelId + 1)),
-      levelBestRanks: {
-        ...p.levelBestRanks,
-        [levelId]: bestRank,
-      },
+      coins: p.coins + Math.max(0, Math.floor(coinsEarned)),
+      highestUnlockedLevel: levelId > 0 ? Math.min(50, Math.max(p.highestUnlockedLevel, levelId + 1)) : p.highestUnlockedLevel,
+      levelBestRanks:
+        levelId > 0
+          ? {
+              ...p.levelBestRanks,
+              [levelId]: bestRank,
+            }
+          : p.levelBestRanks,
       totalDemonsDefeated: p.totalDemonsDefeated + demonsDefeated,
     };
     return applyXpToProfile(withReward, xpGain).profile;
@@ -828,6 +1398,7 @@ export function resetCampaignForNewGame(save: SaveData): SaveData {
     tutorialCompleted: false,
     unlockedAwakenings: ['mark'],
     upgrades: { vitality: 0, blade: 0, defense: 0, breathing: 0 },
+    swordUpgrades: { edge: 0, alloy: 0, tsuba: 0, scabbard: 0 },
     storyChoices: {},
   };
   const updated = syncTopLevelWithActiveProfile({

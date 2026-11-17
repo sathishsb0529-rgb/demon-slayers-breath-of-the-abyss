@@ -146,16 +146,60 @@ export class ParticleSystem {
         y: y - 52 + spreadY,
         vx: Math.cos(angle) * speed * 0.6 + facing * 90,
         vy: Math.sin(angle) * speed * 0.5 - (styleId === 'flame' || styleId === 'sun' ? 140 : 40),
-        size: 3.5 + Math.random() * 6,
-        life: 0.35 + Math.random() * 0.4,
-        maxLife: 0.75,
+        size: styleId === 'mist' ? 8 + Math.random() * 10 : 3.5 + Math.random() * 6,
+        life: styleId === 'mist' ? 0.55 + Math.random() * 0.45 : 0.35 + Math.random() * 0.4,
+        maxLife: styleId === 'mist' ? 1.0 : 0.75,
         color: i % 3 === 0 ? style.secondaryColor : style.primaryColor,
         glowColor: style.glowColor,
-        gravity: styleId === 'flame' || styleId === 'mist' || styleId === 'insect' || styleId === 'flower' ? -95 : 520,
+        gravity:
+          styleId === 'flame' || styleId === 'mist' || styleId === 'insect' || styleId === 'flower' || styleId === 'sun'
+            ? -95
+            : styleId === 'stone'
+              ? 880
+              : 520,
         drag: 0.94,
         kind,
         rotation: Math.random() * Math.PI * 2,
         vr: (Math.random() - 0.5) * 10,
+      });
+    }
+
+    // Style-specific extra signature burst particles
+    if (styleId === 'sound') {
+      // Flamboyant twin fireworks / blast rings
+      for (let b = 0; b < 2; b++) {
+        this.pushParticle({
+          x: x + facing * (55 + b * 65),
+          y: y - 52 + (b === 0 ? -16 : 12),
+          vx: facing * 65,
+          vy: -20,
+          size: 14 + b * 6,
+          life: 0.28,
+          maxLife: 0.28,
+          color: b === 0 ? '#facc15' : '#fb7185',
+          gravity: 0,
+          drag: 1,
+          kind: 'ring',
+          rotation: 0,
+          vr: 0,
+        });
+      }
+    } else if (styleId === 'sun') {
+      // Brilliant solar ring + golden embers
+      this.pushParticle({
+        x: x + facing * 52,
+        y: y - 54,
+        vx: facing * 90,
+        vy: 0,
+        size: 26,
+        life: 0.38,
+        maxLife: 0.38,
+        color: '#f59e0b',
+        gravity: 0,
+        drag: 1,
+        kind: 'ring',
+        rotation: 0,
+        vr: 0,
       });
     }
 
@@ -495,6 +539,29 @@ export class ParticleSystem {
     }
   }
 
+  public spawnPoisonCloud(x: number, y: number, count = 12): void {
+    if (!this.combatVisualEffects) return;
+    const capped = this.performanceMode ? Math.max(4, Math.floor(count * 0.5)) : count;
+    for (let i = 0; i < capped; i++) {
+      this.pushParticle({
+        x: x + (Math.random() - 0.5) * 56,
+        y: y + (Math.random() - 0.5) * 28,
+        vx: (Math.random() - 0.5) * 85,
+        vy: -25 - Math.random() * 75,
+        size: 5 + Math.random() * 6,
+        life: 0.55 + Math.random() * 0.35,
+        maxLife: 0.9,
+        color: i % 2 === 0 ? '#4ade80' : '#a855f7',
+        glowColor: '#86efac',
+        gravity: -18,
+        drag: 0.94,
+        kind: 'poison',
+        rotation: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 3,
+      });
+    }
+  }
+
   public spawnFloatingText(x: number, y: number, text: string, color: string, scale = 1): void {
     this.floatingTexts.push({
       x,
@@ -776,6 +843,112 @@ export class ParticleSystem {
         ctx.strokeStyle = style.secondaryColor;
         ctx.lineWidth = 3;
         ctx.stroke();
+      } else if (arc.style === 'water') {
+        // Traditional Ukiyo-e Water crest wave with curling spray tips
+        ctx.beginPath();
+        ctx.moveTo(-20, 20);
+        ctx.bezierCurveTo(arc.range * 0.28, -42, arc.range * 0.7, -26, arc.range, -2);
+        ctx.bezierCurveTo(arc.range * 0.85, -12, arc.range * 0.72, 22, -20, 20);
+        const grad = ctx.createLinearGradient(-20, 0, arc.range, 0);
+        grad.addColorStop(0, 'rgba(14, 165, 233, 0.1)');
+        grad.addColorStop(0.55, style.primaryColor);
+        grad.addColorStop(1, '#e0f2fe');
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3 * (1 - t * 0.5);
+        ctx.stroke();
+        // Foam curls
+        for (let f = 0; f < 3; f++) {
+          ctx.beginPath();
+          ctx.arc(arc.range * (0.45 + f * 0.24), -12 + f * 6, 7 - f, 0.4, Math.PI * 1.45);
+          ctx.stroke();
+        }
+      } else if (arc.style === 'flame' || arc.style === 'sun') {
+        // Blazing serrated flame dragon / Hinokami solar fire wheel
+        const isSun = arc.style === 'sun';
+        ctx.beginPath();
+        ctx.moveTo(-18, 16);
+        for (let s = 1; s <= 7; s++) {
+          const sx = (s / 7) * arc.range;
+          const sy = (s % 2 === 0 ? -28 : 8) - Math.sin(t * 14 + s) * 8;
+          ctx.lineTo(sx, sy);
+        }
+        ctx.lineTo(arc.range * 0.85, 24);
+        ctx.closePath();
+        const grad = ctx.createLinearGradient(-18, 0, arc.range, 0);
+        grad.addColorStop(0, isSun ? '#7f1d1d' : '#dc2626');
+        grad.addColorStop(0.55, style.primaryColor);
+        grad.addColorStop(1, '#fef08a');
+        ctx.fillStyle = grad;
+        ctx.fill();
+        if (isSun) {
+          ctx.strokeStyle = '#fef9c3';
+          ctx.lineWidth = 2.6 * (1 - t * 0.4);
+          ctx.beginPath();
+          ctx.arc(arc.range * 0.48, -4, 34 + t * 18, -0.9, 1.4);
+          ctx.stroke();
+        }
+      } else if (arc.style === 'wind') {
+        // Swirling emerald razor tornado arcs
+        for (let w = 0; w < 3; w++) {
+          ctx.beginPath();
+          ctx.ellipse(
+            arc.range * (0.3 + w * 0.25),
+            (w - 1) * 14,
+            34 + w * 10,
+            12 + w * 3,
+            -0.28 + t * 0.5,
+            -Math.PI * 0.75,
+            Math.PI * 0.6
+          );
+          ctx.strokeStyle = w === 1 ? '#ffffff' : style.primaryColor;
+          ctx.lineWidth = (5.5 - w) * (1 - t * 0.45);
+          ctx.stroke();
+        }
+      } else if (arc.style === 'stone') {
+        // Heavy earth fracture shockwave + chain link arc
+        ctx.strokeStyle = '#a8a29e';
+        ctx.lineWidth = 7 * (1 - t * 0.4);
+        ctx.beginPath();
+        ctx.arc(16, 0, arc.range * 0.72, -0.75, 0.75);
+        ctx.stroke();
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([8, 6]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (arc.style === 'mist') {
+        // Layered hazy clouds concealing blade path
+        for (let m = 0; m < 4; m++) {
+          ctx.fillStyle = m % 2 === 0 ? 'rgba(165, 243, 252, 0.36)' : 'rgba(203, 213, 225, 0.34)';
+          ctx.beginPath();
+          ctx.ellipse(arc.range * (0.2 + m * 0.22), Math.sin(m * 2 + t * 6) * 14, 38, 18, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (arc.style === 'insect') {
+        // Darting stinger thrust + glowing violet butterfly wing arcs
+        ctx.strokeStyle = style.primaryColor;
+        ctx.lineWidth = 4 * (1 - t * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(arc.range * 1.05, 0);
+        ctx.stroke();
+        for (const side of [-1, 1]) {
+          ctx.fillStyle = 'rgba(192, 132, 252, 0.55)';
+          ctx.beginPath();
+          ctx.ellipse(arc.range * 0.78, side * 18, 16, 8, side * 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (arc.style === 'sound') {
+        // Twin concentric explosive percussion waves
+        for (let s = 0; s < 2; s++) {
+          ctx.strokeStyle = s === 0 ? '#facc15' : '#fb7185';
+          ctx.lineWidth = 5 * (1 - t * 0.45);
+          ctx.beginPath();
+          ctx.arc(arc.range * (0.45 + s * 0.35), 0, 22 + t * 38, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       } else if (arc.pattern === 'spin_wheel') {
         ctx.beginPath();
         ctx.arc(28, 0, 58 + arc.formIndex * 7, t * Math.PI, t * Math.PI + Math.PI * 1.65);

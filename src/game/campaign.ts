@@ -84,6 +84,11 @@ export const MAP_DISPLAY_NAMES: Record<MapId, string> = {
   swordsmith_village: 'Swordsmith Village',
   hashira_grounds: 'Hashira Training Grounds',
   infinity_castle: 'Infinity Castle',
+  burning_village: 'Burning Village',
+  haunted_temple: 'Haunted Temple',
+  underground_tunnel: 'Underground Tunnel',
+  poisonous_forest: 'Poisonous Forest',
+  final_fortress: 'Final Fortress',
 };
 
 const CHAPTER_TITLES: Record<1 | 2 | 3 | 4 | 5, string> = {
@@ -93,6 +98,14 @@ const CHAPTER_TITLES: Record<1 | 2 | 3 | 4 | 5, string> = {
   4: 'Chapter 4: The Final Preparation',
   5: 'Chapter 5: Infinity Castle',
 };
+
+const OPTIONAL_OBJECTIVES: NonNullable<StoryLevelDef['optionalObjective']>[] = [
+  { id: 'perfect_dodges', label: 'Perform 3 Perfect Dodges', bonusCoins: 25, bonusXp: 15 },
+  { id: 'breathing_finisher', label: 'Finish a Demon with a Breathing Form', bonusCoins: 25, bonusXp: 15 },
+  { id: 'fast_clear', label: 'Clear Stage Under 95s', bonusCoins: 30, bonusXp: 18 },
+  { id: 'no_damage', label: 'Clear Stage Taking ≤ 15% Damage', bonusCoins: 35, bonusXp: 20 },
+  { id: 'secret_chest', label: 'Open a Hidden Slayer Cache / Chest', bonusCoins: 30, bonusXp: 15 },
+];
 
 function makeLevel(
   id: number,
@@ -106,8 +119,29 @@ function makeLevel(
   isBossLevel = false,
   allyIds?: string[],
   cutsceneId?: string,
-  postCutsceneId?: string
+  postCutsceneId?: string,
+  extra?: {
+    rewardXp?: number;
+    hasUndergroundDungeon?: boolean;
+    optionalObjective?: StoryLevelDef['optionalObjective'];
+  }
 ): StoryLevelDef {
+  const defaultCoins = isBossLevel ? rewardCoins : 50;
+  const defaultXp =
+    extra?.rewardXp ??
+    (isBossLevel
+      ? id >= 49
+        ? 180
+        : id >= 41
+          ? 110
+          : id >= 20
+            ? 85
+            : 55
+      : 30);
+  const opt =
+    extra?.optionalObjective ??
+    OPTIONAL_OBJECTIVES[extra?.hasUndergroundDungeon ? 4 : id % OPTIONAL_OBJECTIVES.length];
+
   return {
     id,
     chapter,
@@ -119,9 +153,12 @@ function makeLevel(
       : `Defeat ${enemies.length} ${enemies.length > 1 ? 'Demons' : 'Demon'}`,
     mapId,
     enemies,
-    rewardCoins,
+    rewardCoins: defaultCoins,
+    rewardXp: defaultXp,
     difficulty,
     isBossLevel,
+    hasUndergroundDungeon: extra?.hasUndergroundDungeon ?? (isBossLevel && id >= 20),
+    optionalObjective: opt,
     allyHashiraIds: allyIds,
     allyIds,
     cutsceneId,
@@ -133,75 +170,75 @@ export const STORY_LEVELS: StoryLevelDef[] = [
   // CHAPTER 1: TRAINING AND BEGINNING (1 - 10)
   makeLevel(1, 1, 'First Night Beneath Bamboo', 'bamboo_forest', [
     { archetype: 'temple_demon', name: 'Temple Demon', subtitle: 'Feral Night Prowler' },
-  ], 'Normal', 45, 'Your first patrol outside Mt. Sagiri. Cross the bamboo grove and silver river bridge to hunt down the prowling demon.', false, undefined, 'cs_first_demon'),
+  ], 'Normal', 50, 'Your first patrol outside Mt. Sagiri. Cross the bamboo grove and silver river bridge to hunt down the prowling demon.', false, undefined, 'cs_first_demon'),
   makeLevel(2, 1, 'Echoes on the Trail', 'mountain_training', [
     { archetype: 'basic', name: 'Ridge Stalker', subtitle: 'Lesser Demon', hpScale: 1.05 },
     { archetype: 'chachamaru', name: 'Feline Demon Mirage', subtitle: 'Agile Prowler', hpScale: 0.9 },
-  ], 'Normal', 55, 'Swift demons ambush the mountain pass and waterfall gorge under thick dawn mist.'),
+  ], 'Normal', 50, 'Swift demons ambush the mountain pass and waterfall gorge under thick dawn mist.'),
   makeLevel(3, 1, 'Blizzard at Dawn', 'snowy_mountain', [
     { archetype: 'fast', name: 'Frost Claw', subtitle: 'Swift Demon' },
-    { archetype: 'horned_demon', name: 'Horned Demon', subtitle: 'Heavy Charger', hpScale: 0.9 },
-  ], 'Normal', 65, 'Freezing winds sweep across the icicle pass and timber ravine bridge. Watch for heavy horned charges.'),
-  makeLevel(4, 1, 'Wisteria Gate Trial', 'mountain_training', [
+    { archetype: 'horned_demon', name: 'Horned Demon', subtitle: 'Heavy Charger', hpScale: 0.95 },
+  ], 'Normal', 50, 'Freezing winds sweep across the icicle pass and timber ravine bridge. Watch for heavy horned charges.'),
+  makeLevel(4, 1, 'Wisteria Gate Trial', 'haunted_temple', [
     { archetype: 'tongue_demon', name: 'Tongue Demon', subtitle: 'Caged Lasher' },
     { archetype: 'regenerating', name: 'Moss Fiend', subtitle: 'Regenerating Demon' },
-  ], 'Normal', 75, 'Final Selection begins. Traverse the cedar trail and mountain cavern to overcome regenerating fiends.'),
+  ], 'Normal', 50, 'Final Selection deepens inside a haunted shrine perimeter. Overcome regenerating fiends.'),
   makeLevel(5, 1, 'The Hand Demon of Mt. Fujikasane', 'dark_forest', [
     { archetype: 'boss_hand', name: 'Hand Demon', subtitle: 'Final Selection Terror', isBoss: true },
   ], 'Hard', 120, 'A grotesque giant demon who hunted dozens of apprentices awaits deep inside the dark forest clearing.', true, undefined, 'cs_hand_demon'),
   makeLevel(6, 1, 'Shadows of the Swamp', 'japanese_village', [
     { archetype: 'muzan_child', name: 'Shadow Infiltrator', subtitle: 'Muzan Scout' },
     { archetype: 'swamp_demon', name: 'Swamp Demon', subtitle: 'Abyssal Ambusher' },
-  ], 'Normal', 80, 'Villagers vanish after sunset. Cross the lantern market street and canal bridge to intercept the Swamp Demon.'),
-  makeLevel(7, 1, 'Crimson Blood Awakening', 'dark_forest', [
+  ], 'Normal', 50, 'Villagers vanish after sunset. Cross the lantern market street and canal bridge to intercept the Swamp Demon.'),
+  makeLevel(7, 1, 'Crimson Blood Awakening', 'burning_village', [
     { archetype: 'nezuko_base', name: 'Nezuko · Blood Trial', subtitle: 'Kamado Instincts' },
-  ], 'Normal', 85, 'Spar and calm Nezuko as Exploding Blood instincts surge through the foggy hollow.'),
+  ], 'Normal', 50, 'Protect survivors amidst burning rafters as Exploding Blood instincts surge.'),
   makeLevel(8, 1, 'Temari & Arrow Ambush', 'japanese_village', [
     { archetype: 'yahaba', name: 'Yahaba · Arrow Demon', subtitle: 'Asakusa Assassin' },
     { archetype: 'susamaru', name: 'Susamaru · Temari Demon', subtitle: 'Asakusa Assassin' },
-  ], 'Hard', 95, 'Deflect bouncing Temari spheres and vector arrows across the village rooftops and square.'),
-  makeLevel(9, 1, 'Asakusa Physician & Progenitor', 'japanese_village', [
-    { archetype: 'yushiro', name: 'Yushiro · Talisman Test', subtitle: 'Blindfold Talisman', hpScale: 0.85 },
-    { archetype: 'muzan_adult', name: 'Muzan · Disguise Mirage', subtitle: 'Tsukihiko Illusion', hpScale: 0.55 },
-  ], 'Hard', 105, 'Tamayo and Yushiro test your resolve before Muzan’s oppressive aura strikes in the evening street.'),
+  ], 'Hard', 50, 'Deflect bouncing Temari spheres and vector arrows across the village rooftops and square.'),
+  makeLevel(9, 1, 'Asakusa Physician & Progenitor', 'underground_tunnel', [
+    { archetype: 'yushiro', name: 'Yushiro · Talisman Test', subtitle: 'Blindfold Talisman', hpScale: 0.9 },
+    { archetype: 'muzan_adult', name: 'Muzan · Disguise Mirage', subtitle: 'Tsukihiko Illusion', hpScale: 0.65 },
+  ], 'Hard', 50, 'Navigate subterranean passages beneath Asakusa before Muzan’s oppressive aura strikes.'),
   makeLevel(10, 1, 'Kyogai · Tsuzumi Mansion', 'abandoned_temple', [
     { archetype: 'strong', name: 'Stone Arm Brute', subtitle: 'Guardian Demon', hpScale: 1.15 },
     { archetype: 'kyogai', name: 'Kyogai · Drum Demon', subtitle: 'Former Lower Six', isBoss: true },
-  ], 'Hard', 150, 'Advance through the crumbling temple halls as Kyogai twists gravity with his embedded drums.', true),
+  ], 'Hard', 140, 'Advance through the crumbling temple halls as Kyogai twists gravity with his embedded drums.', true),
 
   // CHAPTER 2: DEMON HUNTING (11 - 20)
   makeLevel(11, 2, 'Threads of the Spider Mother', 'spider_mountain', [
     { archetype: 'spider_mother_main', name: 'Mother Spider Demon', subtitle: 'Mt. Natagumo', hpScale: 1.05 },
     { archetype: 'spider_sister_main', name: 'Sister Spider Demon', subtitle: 'Mt. Natagumo', hpScale: 1.05 },
-  ], 'Hard', 115, 'Inosuke and Tanjiro press into Spider Mountain where silver threads ensnare fallen slayers.', false, ['inosuke'], 'cs_spider_mountain'),
-  makeLevel(12, 2, 'The Venomous Brood', 'spider_mountain', [
-    { archetype: 'spider_brother_main', name: 'Brother Spider Demon', subtitle: 'Venom Spinner', hpScale: 1.1 },
-  ], 'Hard', 120, 'Zenitsu dashes through the poison-laced ravine to sever the Brother Spider Demon’s lair.', false, ['zenitsu']),
+  ], 'Hard', 50, 'Inosuke and Tanjiro press into Spider Mountain where silver threads ensnare fallen slayers.', false, ['inosuke'], 'cs_spider_mountain'),
+  makeLevel(12, 2, 'The Venomous Brood', 'poisonous_forest', [
+    { archetype: 'spider_brother_main', name: 'Brother Spider Demon', subtitle: 'Venom Spinner', hpScale: 1.15 },
+  ], 'Hard', 50, 'Zenitsu dashes through toxic spore pools to sever the Brother Spider Demon’s lair.', false, ['zenitsu']),
   makeLevel(13, 2, 'The Carapace Father', 'spider_mountain', [
     { archetype: 'spider_father_main', name: 'Father Spider Demon', subtitle: 'Armored Titan', hpScale: 1.15 },
-  ], 'Hard', 130, 'Fight alongside Giyu Tomioka across the gorge bridge to shatter the colossal spider titan.', false, ['giyu']),
-  makeLevel(14, 2, 'Lower Moon Five: Rui', 'spider_mountain', [
+  ], 'Hard', 50, 'Fight alongside Giyu Tomioka across the gorge bridge to shatter the colossal spider titan.', false, ['giyu']),
+  makeLevel(14, 2, 'Lower Moon Five: Rui', 'poisonous_forest', [
     { archetype: 'boss_rui', name: 'Rui', subtitle: 'Lower Rank Five', isBoss: true },
-  ], 'Hard', 200, 'Tanjiro and Nezuko stand united against Lower Rank Five Rui amidst razor-sharp crimson threads.', true, ['nezuko_ally']),
+  ], 'Hard', 180, 'Tanjiro and Nezuko stand united against Lower Rank Five Rui amidst razor-sharp crimson threads.', true, ['nezuko_ally']),
   makeLevel(15, 2, 'Lower Ranks: Kamanue & Mukago', 'snowy_mountain', [
     { archetype: 'kamanue', name: 'Kamanue · Lower Six', subtitle: 'Twelve Kizuki' },
     { archetype: 'mukago', name: 'Mukago · Lower Four', subtitle: 'Twelve Kizuki' },
-  ], 'Hard', 135, 'Two fugitive Lower Ranks ambush the snowbound mountain pass.'),
-  makeLevel(16, 2, 'Lower Moon One: Enmu & Slasher', 'snowy_mountain', [
+  ], 'Hard', 50, 'Two fugitive Lower Ranks ambush the snowbound mountain pass.'),
+  makeLevel(16, 2, 'Lower Moon One: Enmu & Slasher', 'underground_tunnel', [
     { archetype: 'slasher', name: 'Slasher', subtitle: 'Mugen Express Phantom' },
     { archetype: 'boss_enmu', name: 'Enmu', subtitle: 'Lower Rank One', isBoss: true },
-  ], 'Hard', 220, 'Fight beside Kyojuro Rengoku on the frozen pass to break Enmu’s nightmare Blood Demon Art.', true, ['rengoku']),
-  makeLevel(17, 2, 'Lower Two & Three Purge', 'bamboo_forest', [
+  ], 'Hard', 200, 'Fight beside Kyojuro Rengoku through darkened rail tunnels to break Enmu’s nightmare Blood Demon Art.', true, ['rengoku']),
+  makeLevel(17, 2, 'Lower Two & Three Purge', 'haunted_temple', [
     { archetype: 'wakuraba', name: 'Wakuraba · Lower Three', subtitle: 'Velocity Blitz' },
     { archetype: 'rokuro', name: 'Rokuro · Lower Two', subtitle: 'Crimson Maul' },
-  ], 'Hard', 145, 'Two powered-up Lower Ranks hunt lone slayers under the full moon.'),
+  ], 'Hard', 50, 'Two powered-up Lower Ranks hunt lone slayers through cursed temple ruins.'),
   makeLevel(18, 2, 'Neon Lanterns of Yoshiwara', 'entertainment_district', [
-    { archetype: 'muzan_female', name: 'Crimson Mistress Shade', subtitle: 'Upper Disguise', hpScale: 0.72 },
-    { archetype: 'boss_daki', name: 'Daki · Sash Form', subtitle: 'Upper Rank Six', hpScale: 0.78 },
-  ], 'Hard', 160, 'Scout the glowing alleys and balconies of Yoshiwara with Sound Hashira Tengen Uzui.', false, ['tengen']),
-  makeLevel(19, 2, 'Awakened Obi Storm', 'entertainment_district', [
-    { archetype: 'daki_awakened', name: "Daki's Awakened Form", subtitle: 'Third-Eye Upper Six', hpScale: 1.0 },
-  ], 'Hashira', 175, 'Zenitsu and Inosuke charge across the neon roofs to cut Daki’s sweeping obi ribbons!', false, ['zenitsu', 'inosuke']),
+    { archetype: 'muzan_female', name: 'Crimson Mistress Shade', subtitle: 'Upper Disguise', hpScale: 0.78 },
+    { archetype: 'boss_daki', name: 'Daki · Sash Form', subtitle: 'Upper Rank Six', hpScale: 0.85 },
+  ], 'Hard', 50, 'Scout the glowing alleys and balconies of Yoshiwara with Sound Hashira Tengen Uzui.', false, ['tengen']),
+  makeLevel(19, 2, 'Awakened Obi Storm', 'burning_village', [
+    { archetype: 'daki_awakened', name: "Daki's Awakened Form", subtitle: 'Third-Eye Upper Six', hpScale: 1.05 },
+  ], 'Hashira', 50, 'Zenitsu and Inosuke charge through the blazing roofs to cut Daki’s sweeping obi ribbons!', false, ['zenitsu', 'inosuke']),
   makeLevel(20, 2, 'Upper Moon Six: Gyutaro & Daki', 'entertainment_district', [
     {
       archetype: 'gyutaro',
@@ -211,122 +248,122 @@ export const STORY_LEVELS: StoryLevelDef[] = [
       partnerArchetype: 'daki_awakened',
       partnerName: 'Daki · Awakened Obi',
       partnerSubtitle: 'Upper Six Sibling',
-      partnerHpScale: 0.75,
+      partnerHpScale: 0.78,
     },
-  ], 'Hashira', 320, 'Tanjiro, Zenitsu, Inosuke, and Tengen clash simultaneously with Gyutaro and Daki amidst the blazing district!', true, ['tengen', 'zenitsu', 'inosuke'], 'cs_upper_moon_six'),
+  ], 'Hashira', 280, 'Descend the subterranean cellar behind Yoshiwara and defeat Gyutaro and Daki together!', true, ['tengen', 'zenitsu', 'inosuke'], 'cs_upper_moon_six', undefined, { hasUndergroundDungeon: true, rewardXp: 90 }),
 
   // CHAPTER 3: HASHIRA AND UPPER MOONS (21 - 30)
   makeLevel(21, 3, 'Hantengu’s Emotion Split', 'dark_forest', [
     { archetype: 'sekido', name: 'Sekido · Anger', subtitle: 'Hantengu Clone' },
     { archetype: 'karaku', name: 'Karaku · Pleasure', subtitle: 'Hantengu Clone' },
-  ], 'Hashira', 175, 'Guard the forest trail with Nezuko against Sekido’s lightning and Karaku’s gales.', false, ['nezuko_ally'], 'cs_swordsmith'),
+  ], 'Hashira', 50, 'Guard the forest trail with Nezuko against Sekido’s lightning and Karaku’s gales.', false, ['nezuko_ally'], 'cs_swordsmith'),
   makeLevel(22, 3, 'Sorrow & Joy of Upper Four', 'swordsmith_village', [
     { archetype: 'aizetsu', name: 'Aizetsu · Sorrow', subtitle: 'Hantengu Clone' },
     { archetype: 'urogi', name: 'Urogi · Joy', subtitle: 'Winged Clone' },
-  ], 'Hashira', 185, 'Fight beside Genya through the forge village against Aizetsu and Urogi.', false, ['genya']),
+  ], 'Hashira', 50, 'Fight beside Genya through the forge village against Aizetsu and Urogi.', false, ['genya']),
   makeLevel(23, 3, 'Porcelain Terror: Gyokko', 'swordsmith_village', [
-    { archetype: 'nezuko_awakened', name: 'Demon Mirage Sentinel', subtitle: 'Upper Guard', hpScale: 0.8 },
+    { archetype: 'nezuko_awakened', name: 'Demon Mirage Sentinel', subtitle: 'Upper Guard', hpScale: 0.85 },
     { archetype: 'gyokko', name: 'Gyokko · Upper Rank Five', subtitle: 'Porcelain Artisan', isBoss: true },
-  ], 'Hashira', 215, 'Join Mist Hashira Muichiro Tokito to strike Gyokko down between porcelain vessels!', true, ['muichiro']),
-  makeLevel(24, 3, 'Hantengu: Urami Resentment', 'swordsmith_village', [
-    { archetype: 'urami', name: 'Urami · Giant Resentment', subtitle: 'Upper Rank Four Shield', hpScale: 1.0 },
-  ], 'Hashira', 215, 'Love Hashira Mitsuri Kanroji holds the wooden dragons back while you cleave Urami!', false, ['mitsuri']),
-  makeLevel(25, 3, 'Upper Moon Four: Zohakuten', 'swordsmith_village', [
-    { archetype: 'hantengu_base', name: 'Hantengu Core', subtitle: 'Upper Four', hpScale: 0.7 },
+  ], 'Hashira', 300, 'Traverse the hidden kiln tunnels with Mist Hashira Muichiro Tokito to strike Gyokko down!', true, ['muichiro'], undefined, undefined, { hasUndergroundDungeon: true, rewardXp: 95 }),
+  makeLevel(24, 3, 'Hantengu: Urami Resentment', 'burning_village', [
+    { archetype: 'urami', name: 'Urami · Giant Resentment', subtitle: 'Upper Rank Four Shield', hpScale: 1.05 },
+  ], 'Hashira', 50, 'Love Hashira Mitsuri Kanroji holds the wooden dragons back amidst burning timber!', false, ['mitsuri']),
+  makeLevel(25, 3, 'Upper Moon Four: Zohakuten', 'poisonous_forest', [
+    { archetype: 'hantengu_base', name: 'Hantengu Core', subtitle: 'Upper Four', hpScale: 0.75 },
     { archetype: 'zohakuten', name: 'Zohakuten · Hatred', subtitle: 'Upper Rank Four', isBoss: true },
-  ], 'Upper Moon', 360, 'With Nezuko, Genya, and Mitsuri, survive wooden dragon onslaughts and drum shockwaves!', true, ['nezuko_ally', 'mitsuri', 'genya']),
+  ], 'Upper Moon', 340, 'With Nezuko, Genya, and Mitsuri, break through the blighted woods and Zohakuten’s drum waves!', true, ['nezuko_ally', 'mitsuri', 'genya'], undefined, undefined, { hasUndergroundDungeon: true, rewardXp: 105 }),
   makeLevel(26, 3, 'Hashira Training: Summit', 'hashira_grounds', [
-    { archetype: 'ubume', name: 'Ubume · Phantom Trial', subtitle: 'Hashira Training Memory', hpScale: 1.1 },
-  ], 'Hashira', 210, 'Sharpen your reflexes alongside fellow slayers at Demon Slayer Corps headquarters.', false, undefined, 'cs_hashira_meeting'),
+    { archetype: 'ubume', name: 'Ubume · Phantom Trial', subtitle: 'Hashira Training Memory', hpScale: 1.15 },
+  ], 'Hashira', 50, 'Sharpen your reflexes alongside fellow slayers at Demon Slayer Corps headquarters.', false, undefined, 'cs_hashira_meeting'),
   makeLevel(27, 3, 'Hashira Sparring: Crimson Medicine', 'hashira_grounds', [
-    { archetype: 'tamayo', name: 'Tamayo Illusion', subtitle: 'Aroma Training', hpScale: 1.1 },
-    { archetype: 'strong', name: 'Stone Trial Sentinel', subtitle: 'Heavy Sparring Spirit', hpScale: 1.6 },
-  ], 'Hashira', 220, 'Resist intoxicating Blood Aroma under Gyomei’s stone training watch.', false, ['gyomei']),
+    { archetype: 'tamayo', name: 'Tamayo Illusion', subtitle: 'Aroma Training', hpScale: 1.15 },
+    { archetype: 'strong', name: 'Stone Trial Sentinel', subtitle: 'Heavy Sparring Spirit', hpScale: 1.65 },
+  ], 'Hashira', 50, 'Resist intoxicating Blood Aroma under Gyomei’s stone training watch.', false, ['gyomei']),
   makeLevel(28, 3, 'Night Raid on the Estate', 'bamboo_forest', [
-    { archetype: 'muzan_child', name: "Muzan's Child Illusion", subtitle: 'Phantom Scout', hpScale: 1.15 },
-    { archetype: 'muzan_female', name: "Muzan's Female Illusion", subtitle: 'Phantom Aristocrat', hpScale: 1.15 },
-  ], 'Upper Moon', 235, 'Muzan dispatches phantom manifestations under cover of the bamboo night.'),
-  makeLevel(29, 3, 'Ruins of the Ancient Shrine', 'abandoned_temple', [
-    { archetype: 'nezuko_adult', name: 'Blood Burst Echo', subtitle: 'Awakened Demon', hpScale: 1.15 },
-    { archetype: 'tanjiro_demon_form', name: 'Abyssal Slayer Shade', subtitle: 'Dark Vision', hpScale: 1.15 },
-  ], 'Upper Moon', 250, 'Clear the final shrine ruins with Sanemi before the Corps gathers.'),
+    { archetype: 'muzan_child', name: "Muzan's Child Illusion", subtitle: 'Phantom Scout', hpScale: 1.2 },
+    { archetype: 'muzan_female', name: "Muzan's Female Illusion", subtitle: 'Phantom Aristocrat', hpScale: 1.2 },
+  ], 'Upper Moon', 50, 'Muzan dispatches phantom manifestations under cover of the bamboo night.'),
+  makeLevel(29, 3, 'Ruins of the Ancient Shrine', 'haunted_temple', [
+    { archetype: 'nezuko_adult', name: 'Blood Burst Echo', subtitle: 'Awakened Demon', hpScale: 1.2 },
+    { archetype: 'tanjiro_demon_form', name: 'Abyssal Slayer Shade', subtitle: 'Dark Vision', hpScale: 1.2 },
+  ], 'Upper Moon', 50, 'Clear the haunted shrine ruins with Sanemi before the Corps gathers.'),
   makeLevel(30, 3, 'Trial of the Red Blade', 'hashira_grounds', [
-    { archetype: 'boss_akaza', name: 'Akaza Mirage', subtitle: 'Upper Rank Three Echo', isBoss: true, hpScale: 0.95 },
-  ], 'Upper Moon', 380, 'Face a phantom manifestation of Upper Rank Three beside Giyu to prove Hashira mastery.', true, ['giyu']),
+    { archetype: 'boss_akaza', name: 'Akaza Mirage', subtitle: 'Upper Rank Three Echo', isBoss: true, hpScale: 1.0 },
+  ], 'Upper Moon', 360, 'Face a phantom manifestation of Upper Rank Three beside Giyu to prove Hashira mastery.', true, ['giyu'], undefined, undefined, { hasUndergroundDungeon: false, rewardXp: 110 }),
 
   // CHAPTER 4: THE FINAL PREPARATION (31 - 40)
   makeLevel(31, 4, 'Blizzard Crucible', 'snowy_mountain', [
-    { archetype: 'regenerating', name: 'Glacier Fiend', subtitle: 'Elite Regenerator', hpScale: 1.8 },
-    { archetype: 'hantengu_fear', name: 'Fear Titan Echo', subtitle: 'Elite Heavy', hpScale: 1.1 },
-  ], 'Upper Moon', 260, 'Push your body to the limit in freezing mountain battles.'),
-  makeLevel(32, 4, 'Lanterns Before the Storm', 'japanese_village', [
-    { archetype: 'susamaru', name: 'Temari Phantasm', subtitle: 'Elite Bombardier', hpScale: 1.4 },
-    { archetype: 'yahaba', name: 'Vector Phantasm', subtitle: 'Elite Art User', hpScale: 1.4 },
-  ], 'Upper Moon', 270, 'Eliminate elite echoes infiltrating the final evacuation town.'),
-  makeLevel(33, 4, 'Abyssal Woods Purge', 'dark_forest', [
-    { archetype: 'rui_father', name: 'Carapace Remnant', subtitle: 'Elite Brute', hpScale: 1.45 },
-    { archetype: 'rui_mother', name: 'Silk Remnant', subtitle: 'Elite Art User', hpScale: 1.45 },
-  ], 'Upper Moon', 280, 'Survive relentless regeneration in the pitch-black canopy.'),
-  makeLevel(34, 4, 'Widow Peak Webs', 'spider_mountain', [
-    { archetype: 'rui_brother', name: 'Venom Remnant', subtitle: 'Elite Art User', hpScale: 1.55 },
-    { archetype: 'rui_sister', name: 'Acid Thread Remnant', subtitle: 'Elite Sprinter', hpScale: 1.55 },
-  ], 'Upper Moon', 290, 'Destroy lingering Upper Moon remnants on Spider Mountain.'),
+    { archetype: 'regenerating', name: 'Glacier Fiend', subtitle: 'Elite Regenerator', hpScale: 1.85 },
+    { archetype: 'hantengu_fear', name: 'Fear Titan Echo', subtitle: 'Elite Heavy', hpScale: 1.15 },
+  ], 'Upper Moon', 50, 'Push your body to the limit in freezing mountain battles.'),
+  makeLevel(32, 4, 'Lanterns Before the Storm', 'burning_village', [
+    { archetype: 'susamaru', name: 'Temari Phantasm', subtitle: 'Elite Bombardier', hpScale: 1.45 },
+    { archetype: 'yahaba', name: 'Vector Phantasm', subtitle: 'Elite Art User', hpScale: 1.45 },
+  ], 'Upper Moon', 50, 'Eliminate elite echoes setting fire to the evacuation town.'),
+  makeLevel(33, 4, 'Abyssal Woods Purge', 'poisonous_forest', [
+    { archetype: 'rui_father', name: 'Carapace Remnant', subtitle: 'Elite Brute', hpScale: 1.5 },
+    { archetype: 'rui_mother', name: 'Silk Remnant', subtitle: 'Elite Art User', hpScale: 1.5 },
+  ], 'Upper Moon', 50, 'Survive relentless regeneration amidst toxic mire.'),
+  makeLevel(34, 4, 'Widow Peak Webs', 'underground_tunnel', [
+    { archetype: 'rui_brother', name: 'Venom Remnant', subtitle: 'Elite Art User', hpScale: 1.6 },
+    { archetype: 'rui_sister', name: 'Acid Thread Remnant', subtitle: 'Elite Sprinter', hpScale: 1.6 },
+  ], 'Upper Moon', 50, 'Destroy lingering Upper Moon remnants inside cavernous tunnels.'),
   makeLevel(35, 4, 'Forge Defense: Crimson Dawn', 'swordsmith_village', [
-    { archetype: 'hantengu_merged', name: 'Hatred Remnant', subtitle: 'Upper Four Echo', hpScale: 1.1 },
-  ], 'Upper Moon', 310, 'Ensure every Nichirin blade is tempered before the final descent.'),
+    { archetype: 'hantengu_merged', name: 'Hatred Remnant', subtitle: 'Upper Four Echo', hpScale: 1.15 },
+  ], 'Upper Moon', 50, 'Ensure every Nichirin blade is tempered before the final descent.'),
   makeLevel(36, 4, 'Moonlit Duelists', 'bamboo_forest', [
-    { archetype: 'tanjiro_demon_form', name: "Tanjiro's Demon Shade", subtitle: 'Crimson Nightmare', hpScale: 1.25 },
-    { archetype: 'rokuro', name: 'Crimson Regent', subtitle: 'Elite Demon', hpScale: 1.65 },
-  ], 'Upper Moon', 320, 'Precision parries decide survival beneath the swaying bamboo.'),
-  makeLevel(37, 4, 'Ashen Pagoda Gauntlet', 'abandoned_temple', [
-    { archetype: 'kyogai', name: 'Resonant Drum Shade', subtitle: 'Elite Art User', hpScale: 1.55 },
-    { archetype: 'wakuraba', name: 'Gale Blitz Shade', subtitle: 'Elite Sprinter', hpScale: 1.55 },
-  ], 'Upper Moon', 330, 'Break through heavily fortified temple guardians.'),
+    { archetype: 'tanjiro_demon_form', name: "Tanjiro's Demon Shade", subtitle: 'Crimson Nightmare', hpScale: 1.3 },
+    { archetype: 'rokuro', name: 'Crimson Regent', subtitle: 'Elite Demon', hpScale: 1.7 },
+  ], 'Upper Moon', 50, 'Precision parries decide survival beneath the swaying bamboo.'),
+  makeLevel(37, 4, 'Ashen Pagoda Gauntlet', 'haunted_temple', [
+    { archetype: 'kyogai', name: 'Resonant Drum Shade', subtitle: 'Elite Art User', hpScale: 1.6 },
+    { archetype: 'wakuraba', name: 'Gale Blitz Shade', subtitle: 'Elite Sprinter', hpScale: 1.6 },
+  ], 'Upper Moon', 50, 'Break through heavily fortified haunted temple guardians.'),
   makeLevel(38, 4, 'Crimson District Remnant', 'entertainment_district', [
-    { archetype: 'daki_awakened', name: 'Sash Remnant', subtitle: 'Upper Six Echo', hpScale: 1.25 },
-    { archetype: 'gyutaro_awakened', name: "Gyutaro's Awakened Form", subtitle: 'Upper Six Echo', hpScale: 1.2 },
-  ], 'Upper Moon', 345, 'Cleanse the remaining Upper Rank echoes.'),
+    { archetype: 'daki_awakened', name: 'Sash Remnant', subtitle: 'Upper Six Echo', hpScale: 1.3 },
+    { archetype: 'gyutaro_awakened', name: "Gyutaro's Awakened Form", subtitle: 'Upper Six Echo', hpScale: 1.25 },
+  ], 'Upper Moon', 50, 'Cleanse the remaining Upper Rank echoes.'),
   makeLevel(39, 4, 'Final Hashira Summit', 'hashira_grounds', [
-    { archetype: 'muzan_adult', name: "Muzan's Adult Aspect", subtitle: 'Progenitor Vessel', hpScale: 1.2 },
-  ], 'Upper Moon', 360, 'Stand with the Hashira at Corps headquarters before the Infinity Castle opens.', false, ['giyu', 'sanemi']),
-  makeLevel(40, 4, 'The Biwa Resounds', 'hashira_grounds', [
-    { archetype: 'boss_enmu', name: 'Kagaya Trap Guardian', subtitle: 'Infinity Herald', isBoss: true, hpScale: 1.5, damageScale: 1.3 },
-  ], 'Upper Moon', 440, 'Shoji doors open beneath your feet as Nakime summons the Corps into the abyss.', true, ['giyu', 'mitsuri'], 'cs_infinity_castle'),
+    { archetype: 'muzan_adult', name: "Muzan's Adult Aspect", subtitle: 'Progenitor Vessel', hpScale: 1.25 },
+  ], 'Upper Moon', 50, 'Stand with the Hashira at Corps headquarters before the Infinity Castle opens.', false, ['giyu', 'sanemi']),
+  makeLevel(40, 4, 'The Biwa Resounds', 'underground_tunnel', [
+    { archetype: 'boss_enmu', name: 'Kagaya Trap Guardian', subtitle: 'Infinity Herald', isBoss: true, hpScale: 1.55, damageScale: 1.35 },
+  ], 'Upper Moon', 320, 'Shoji doors drop beneath your feet into a subterranean vault as Nakime summons the Corps!', true, ['giyu', 'mitsuri'], 'cs_infinity_castle', undefined, { hasUndergroundDungeon: true, rewardXp: 110 }),
 
-  // CHAPTER 5: INFINITY CASTLE (41 - 50)
+  // CHAPTER 5: INFINITY CASTLE & FINAL FORTRESS (41 - 50)
   makeLevel(41, 5, 'Black Thunder: Kaigaku', 'infinity_castle', [
-    { archetype: 'fast', name: 'Castle Sentinel', subtitle: 'Lower Rank Strength', hpScale: 2.0 },
+    { archetype: 'fast', name: 'Castle Sentinel', subtitle: 'Lower Rank Strength', hpScale: 2.1 },
     { archetype: 'kaigaku', name: 'Kaigaku · Upper Rank Six', subtitle: 'Corrupted Thunder', isBoss: true },
-  ], 'Upper Moon', 440, 'Cross the shifting foyer and moving tatami chasm to strike down Black Lightning Kaigaku.', true, ['zenitsu']),
+  ], 'Upper Moon', 360, 'Cross the shifting foyer and dark dungeon wing to strike down Black Lightning Kaigaku.', true, ['zenitsu'], undefined, undefined, { hasUndergroundDungeon: true, rewardXp: 115 }),
   makeLevel(42, 5, 'Battle Against Nakime', 'infinity_castle', [
     { archetype: 'boss_nakime', name: 'Nakime', subtitle: 'Upper Rank Four · Biwa', isBoss: true },
-  ], 'Upper Moon', 500, 'Obanai Iguro and Mitsuri Kanroji traverse the vertical stairways to silence Nakime’s Biwa.', true, ['obanai', 'mitsuri']),
+  ], 'Upper Moon', 390, 'Obanai Iguro and Mitsuri Kanroji traverse the vertical stairways to silence Nakime’s Biwa.', true, ['obanai', 'mitsuri'], undefined, undefined, { hasUndergroundDungeon: true, rewardXp: 120 }),
   makeLevel(43, 5, 'Akaza Encounter: Tanjiro & Giyu', 'infinity_castle', [
-    { archetype: 'boss_akaza', name: 'Akaza', subtitle: 'Upper Rank Three (Phase I)', isBoss: true, hpScale: 1.0 },
-  ], 'Upper Moon', 560, 'Tanjiro and Water Hashira Giyu face Upper Rank Three Akaza inside the rotating castle hall!', true, ['giyu'], 'cs_akaza_duel'),
-  makeLevel(44, 5, 'Final Akaza Battle: Selfless State', 'infinity_castle', [
-    { archetype: 'akaza_awakened', name: "Akaza's Awakened Form", subtitle: 'Upper Rank Three · Compass Needle', isBoss: true, hpScale: 1.25, damageScale: 1.15 },
-  ], 'INSANE', 660, 'Beside Giyu Tomioka, enter the Selfless State to shatter Akaza’s Compass Needle!', true, ['giyu']),
+    { archetype: 'boss_akaza', name: 'Akaza', subtitle: 'Upper Rank Three (Phase I)', isBoss: true, hpScale: 1.05 },
+  ], 'Upper Moon', 420, 'Unlock the deeper sanctum with Giyu to face Upper Rank Three Akaza!', true, ['giyu'], 'cs_akaza_duel', undefined, { hasUndergroundDungeon: true, rewardXp: 125 }),
+  makeLevel(44, 5, 'Final Akaza Battle: Selfless State', 'final_fortress', [
+    { archetype: 'akaza_awakened', name: "Akaza's Awakened Form", subtitle: 'Upper Rank Three · Compass Needle', isBoss: true, hpScale: 1.3, damageScale: 1.2 },
+  ], 'INSANE', 460, 'Beside Giyu Tomioka, enter the Transparent World & Selfless State to shatter Akaza!', true, ['giyu'], undefined, undefined, { hasUndergroundDungeon: true, rewardXp: 135 }),
   makeLevel(45, 5, 'Doma Chamber: Kanao & Inosuke', 'infinity_castle', [
-    { archetype: 'doma_ice_clone', name: "Doma's Cryo Clone", subtitle: 'Lotus Guardian', hpScale: 1.1 },
-    { archetype: 'boss_doma', name: 'Doma', subtitle: 'Upper Rank Two (Phase I)', isBoss: true, hpScale: 1.0 },
-  ], 'Upper Moon', 620, 'Kanao and Inosuke charge into the freezing lotus chamber against Upper Rank Two Doma!', true, ['kanao', 'inosuke'], 'cs_doma_duel'),
-  makeLevel(46, 5, 'Final Doma Battle: Rime Bodhisattva', 'infinity_castle', [
-    { archetype: 'doma_final', name: "Doma's Final Battle Form", subtitle: 'Upper Rank Two · Rime Bodhisattva', isBoss: true, hpScale: 1.25, damageScale: 1.15 },
-  ], 'INSANE', 740, 'With Kanao and Inosuke at your side, shatter Doma’s freezing clones and giant Bodhisattva!', true, ['kanao', 'inosuke']),
+    { archetype: 'doma_ice_clone', name: "Doma's Cryo Clone", subtitle: 'Lotus Guardian', hpScale: 1.15 },
+    { archetype: 'boss_doma', name: 'Doma', subtitle: 'Upper Rank Two (Phase I)', isBoss: true, hpScale: 1.05 },
+  ], 'Upper Moon', 440, 'Kanao and Inosuke descend the frozen dungeon toward Upper Rank Two Doma!', true, ['kanao', 'inosuke'], 'cs_doma_duel', undefined, { hasUndergroundDungeon: true, rewardXp: 130 }),
+  makeLevel(46, 5, 'Final Doma Battle: Rime Bodhisattva', 'final_fortress', [
+    { archetype: 'doma_final', name: "Doma's Final Battle Form", subtitle: 'Upper Rank Two · Rime Bodhisattva', isBoss: true, hpScale: 1.3, damageScale: 1.2 },
+  ], 'INSANE', 500, 'With Kanao and Inosuke at your side, shatter Doma’s freezing clones and giant Bodhisattva!', true, ['kanao', 'inosuke'], undefined, undefined, { hasUndergroundDungeon: true, rewardXp: 145 }),
   makeLevel(47, 5, 'Kokushibo: Sanemi & Gyomei', 'infinity_castle', [
-    { archetype: 'boss_kokushibo', name: 'Kokushibo', subtitle: 'Upper Rank One (Phase I)', isBoss: true, hpScale: 1.0 },
-  ], 'INSANE', 720, 'Wind Hashira Sanemi and Stone Hashira Gyomei clash with six-eyed Upper Rank One Kokushibo!', true, ['sanemi', 'gyomei', 'muichiro'], 'cs_kokushibo_duel'),
-  makeLevel(48, 5, 'Final Kokushibo: Eclipse of Six Eyes', 'infinity_castle', [
-    { archetype: 'kokushibo_demon', name: "Kokushibo's Transformation", subtitle: 'Upper Rank One · Calamity', isBoss: true, hpScale: 1.28, damageScale: 1.18 },
-  ], 'INSANE', 880, 'Sanemi, Gyomei, and Genya unleash crimson red blades against transformed Kokushibo!', true, ['sanemi', 'gyomei', 'genya']),
-  makeLevel(49, 5, 'Demon King Vessel Assault', 'infinity_castle', [
-    { archetype: 'boss_muzan', name: 'Muzan · Awakening Cocoon', subtitle: 'Progenitor Aspect', hpScale: 0.78 },
-    { archetype: 'demon_king_tanjiro', name: 'Demon King Mirage', subtitle: 'Abyssal Eclipse', hpScale: 0.88, isBoss: true },
-  ], 'INSANE', 950, 'Break past Muzan’s cocoon ward into the Throne Sanctum alongside the surviving Hashira.', true, ['giyu', 'obanai', 'mitsuri']),
-  makeLevel(50, 5, 'Final Muzan Battle: Dawn Approaching', 'infinity_castle', [
+    { archetype: 'boss_kokushibo', name: 'Kokushibo', subtitle: 'Upper Rank One (Phase I)', isBoss: true, hpScale: 1.05 },
+  ], 'INSANE', 520, 'Unseal the Upper One chamber and clash beside Sanemi and Gyomei against six-eyed Kokushibo!', true, ['sanemi', 'gyomei', 'muichiro'], 'cs_kokushibo_duel', undefined, { hasUndergroundDungeon: true, rewardXp: 150 }),
+  makeLevel(48, 5, 'Final Kokushibo: Eclipse of Six Eyes', 'final_fortress', [
+    { archetype: 'kokushibo_demon', name: "Kokushibo's Transformation", subtitle: 'Upper Rank One · Calamity', isBoss: true, hpScale: 1.32, damageScale: 1.22 },
+  ], 'INSANE', 580, 'Sanemi, Gyomei, and Genya unleash crimson red blades against transformed Kokushibo!', true, ['sanemi', 'gyomei', 'genya'], undefined, undefined, { hasUndergroundDungeon: true, rewardXp: 165 }),
+  makeLevel(49, 5, 'Demon King Vessel Assault', 'final_fortress', [
+    { archetype: 'boss_muzan', name: 'Muzan · Awakening Cocoon', subtitle: 'Progenitor Aspect', hpScale: 0.85 },
+    { archetype: 'demon_king_tanjiro', name: 'Demon King Mirage', subtitle: 'Abyssal Eclipse', hpScale: 0.95, isBoss: true },
+  ], 'INSANE', 640, 'Break through the fortress dungeon gate into the Demon King’s outer ward alongside the Hashira.', true, ['giyu', 'obanai', 'mitsuri'], undefined, undefined, { hasUndergroundDungeon: true, rewardXp: 175 }),
+  makeLevel(50, 5, 'Final Muzan Battle: Dawn Approaching', 'final_fortress', [
     { archetype: 'muzan_final', name: 'Muzan Kibutsuji · Final Form', subtitle: 'Progenitor of Demons', isBoss: true },
-  ], 'INSANE', 2000, 'Unite with the Hashira inside the Throne Sanctum and hold Muzan until the sun rises!', true, ['giyu', 'sanemi', 'gyomei'], 'cs_muzan_finale', 'cs_ending'),
+  ], 'INSANE', 950, 'Unite with the Hashira inside the Final Fortress Throne and hold Muzan until the sun rises!', true, ['giyu', 'sanemi', 'gyomei'], 'cs_muzan_finale', 'cs_ending', { hasUndergroundDungeon: true, rewardXp: 240 }),
 ];
 
 export interface CharacterCampaignSummary {

@@ -32,6 +32,7 @@ import {
 import {
   ARENA_LEFT,
   BASE_ATTACK_SPECS,
+  DIFFICULTY_SCALING,
   DODGE_COOLDOWN,
   DODGE_DURATION,
   DODGE_SPEED,
@@ -42,12 +43,21 @@ import {
   PLAYER_JUMP_VELOCITY,
   PLAYER_RUN_SPEED,
   PLAYER_WALK_SPEED,
+  TRANSPARENT_WORLD_COOLDOWN,
+  TRANSPARENT_WORLD_DURATION,
   WORLD_HEIGHT,
   WORLD_WIDTH,
 } from './constants';
 import { DEMON_TEMPLATES } from './demons';
 import { ParticleSystem } from './particles';
-import { getXpForNextLevel } from './save';
+import {
+  calculateCombatRank,
+  getMilestoneBonuses,
+  getTotalXpForProfile,
+  getXpForNextLevel,
+  SECRET_BOSSES,
+  TRAINING_CHALLENGES,
+} from './save';
 import {
   activateRagdoll,
   createEmptyRagdoll,
@@ -55,8 +65,11 @@ import {
   stepRagdoll,
 } from './physics';
 import {
+  ArenaAmbushTrigger,
   ArenaDecorItem,
+  ArenaDungeonItem,
   ArenaExploreCache,
+  ArenaHazard,
   ArenaObstacle,
   ArenaPlatform,
   ArenaWaterZone,
@@ -66,7 +79,9 @@ import {
   BdaProjectile,
   BreathingStyleId,
   CharacterUpgrades,
+  CombatRank,
   DemonArchetype,
+  DifficultyMode,
   Fighter,
   FighterActionState,
   FighterVisualProfile,
@@ -77,8 +92,10 @@ import {
   InputState,
   MapId,
   MapZone,
+  ScoreBreakdown,
   StoryEnemySpawn,
   StoryLevelDef,
+  SwordUpgrades,
   UltimateId,
 } from './types';
 
@@ -102,23 +119,33 @@ function createSlayerFighter(
   upgrades?: CharacterUpgrades,
   skinId?: string,
   unlockedAwakenings: AwakeningTierId[] = [],
-  equippedUltimate: UltimateId = 'eternal_sun'
+  equippedUltimate: UltimateId = 'eternal_sun',
+  playerLevel = 1,
+  swordUpgrades?: SwordUpgrades
 ): Fighter {
   const def = getCharacterById(charId);
   const vitLv = upgrades?.vitality ?? 0;
   const bladeLv = upgrades?.blade ?? 0;
   const defLv = upgrades?.defense ?? 0;
   const breathLv = upgrades?.breathing ?? 0;
+  const edgeLv = swordUpgrades?.edge ?? 0;
+  const tsubaLv = swordUpgrades?.tsuba ?? 0;
+  const scabbardLv = swordUpgrades?.scabbard ?? 0;
+  const milestones = role === 'player' ? getMilestoneBonuses(playerLevel) : getMilestoneBonuses(1);
 
   const skin = skinId
     ? getCharacterSkins(charId).find((s) => s.id === skinId)
     : undefined;
 
-  const maxHp = def.maxHp + vitLv * 22;
-  const damageMult = def.damageMult * (1 + bladeLv * 0.09);
+  const maxHp = def.maxHp + vitLv * 22 + milestones.maxHpBonus;
+  const damageMult = def.damageMult * (1 + bladeLv * 0.09 + milestones.attackPowerBonus + edgeLv * 0.07);
   const speedMult = def.speedMult * (1 + breathLv * 0.04);
-  const energyRegen = def.energyRegen + breathLv * 1.4;
-  const defenseReduction = Math.min(0.58, (def.id === 'genya' ? 0.12 : 0) + defLv * 0.07);
+  const energyRegen = def.energyRegen + breathLv * 1.4 + milestones.energyRegenBonus;
+  const defenseReduction = Math.min(
+    0.65,
+    (def.id === 'genya' ? 0.12 : 0) + defLv * 0.07 + milestones.defenseBonus + tsubaLv * 0.05
+  );
+  const cdFactor = Math.max(0.55, 1 - milestones.cooldownReduction - scabbardLv * 0.06);
   const formCount = BREATHING_STYLES[breathingStyle].forms.length;
 
   return {
@@ -169,7 +196,7 @@ function createSlayerFighter(
     hp: maxHp,
     maxHp,
     displayHp: maxHp,
-    energy: 50,
+    energy: Math.min(100, 50 + milestones.startingEnergyBonus),
     maxEnergy: 100,
     state: 'IDLE',
     stateTimer: 0,
@@ -186,7 +213,7 @@ function createSlayerFighter(
     queuedNextCombo: false,
     secondHitFired: false,
     heavyCooldown: 0,
-    maxHeavyCooldown: HEAVY_ATTACK_COOLDOWN,
+    maxHeavyCooldown: HEAVY_ATTACK_COOLDOWN * cdFactor,
     formCooldowns: new Array(formCount).fill(0),
     dodgeCooldown: 0,
     invulnTimer: 0,
@@ -198,6 +225,10 @@ function createSlayerFighter(
     chillTimer: 0,
     regenTimer: 0,
     bossPhase: 1,
+    shieldTimer: 0,
+    dodgeIFrameBonus: milestones.dodgeIFrameBonus,
+    counterWindowBonus: milestones.counterWindowBonus + tsubaLv * 0.06,
+    perfectDodgeStreak: 0,
     scarfPoints: Array.from({ length: 5 }, (_, idx) => ({
       x: startX - idx * 8,
       y: GROUND_Y - 82 + idx * 3,
@@ -217,6 +248,9 @@ function createSlayerFighter(
     unlockedAwakenings: [...unlockedAwakenings],
     equippedUltimate,
     ultimateCooldown: 0,
+    transparentWorldActive: false,
+    transparentWorldTimer: 0,
+    transparentWorldCooldown: 0,
     redBladeBurnTimer: 0,
     consecutiveHitsTaken: 0,
     consecutiveHitTimer: 0,
@@ -227,10 +261,12 @@ function createDemonFighter(
   spawn: StoryEnemySpawn,
   waveIdx: number,
   startX: number,
-  equippedDemonSkins?: Record<string, string>
+  equippedDemonSkins?: Record<string, string>,
+  difficultyMode: DifficultyMode = 'standard'
 ): Fighter {
   const tpl = DEMON_TEMPLATES[spawn.archetype];
-  const hp = Math.round(tpl.baseHp * (spawn.hpScale ?? 1));
+  const diffScale = DIFFICULTY_SCALING[difficultyMode] ?? DIFFICULTY_SCALING.standard;
+  const hp = Math.round(tpl.baseHp * (spawn.hpScale ?? 1) * diffScale.hpMult);
   const demonSkinId = equippedDemonSkins?.[spawn.archetype];
   const demonSkin = demonSkinId ? getDemonSkins(spawn.archetype).find((s) => s.id === demonSkinId) : undefined;
   const visual = { ...tpl.visual };
@@ -255,9 +291,10 @@ function createDemonFighter(
     subtitle: spawn.subtitle,
     role: 'demon',
     demonArchetype: spawn.archetype,
+    demonClass: tpl.ability.demonClass,
     visual,
     breathingStyle: 'water',
-    damageMult: tpl.damageMult * (spawn.damageScale ?? 1),
+    damageMult: tpl.damageMult * (spawn.damageScale ?? 1) * diffScale.dmgMult,
     speedMult: tpl.speedMult,
     attackSpeedMult: spawn.archetype === 'fast' || spawn.archetype === 'akaza_awakened' ? 1.15 : 1.0,
     energyRegen: 0,
@@ -326,12 +363,70 @@ function createDemonFighter(
   };
 }
 
+export interface LevelRunExtras {
+  demonsDefeated: number;
+  bossesDefeated: number;
+  perfectDodges: number;
+  noDamage: boolean;
+  breathingFinishers: number;
+  chestsFound: number;
+  killedArchetypes: string[];
+  totalDamageDealt: number;
+  trainingId?: string;
+  secretBossId?: string;
+}
+
 export interface EngineCallbacks {
   onHudUpdate: (snapshot: HudSnapshot) => void;
   onTutorialComplete?: () => void;
-  onLevelComplete?: (levelId: number, rank: 'S' | 'A' | 'B', coinsEarned: number, kills: number) => void;
+  onLevelComplete?: (
+    levelId: number,
+    rank: CombatRank,
+    coinsEarned: number,
+    kills: number,
+    xpEarned: number,
+    breakdown: ScoreBreakdown,
+    extra: LevelRunExtras
+  ) => void;
   onExploreCachePickup?: (cacheId: string, coins: number) => void;
   onSurvivalComplete?: (wave: number, won: boolean, coinsEarned: number, demonsDefeated: number) => void;
+}
+
+const UPPER_MOON_OR_KING_ARCHETYPES = new Set<DemonArchetype>([
+  'boss_kokushibo',
+  'kokushibo_demon',
+  'boss_doma',
+  'doma_final',
+  'doma_ice_clone',
+  'boss_akaza',
+  'akaza_awakened',
+  'hantengu_base',
+  'hantengu_merged',
+  'hantengu_fear',
+  'zohakuten',
+  'karaku',
+  'sekido',
+  'aizetsu',
+  'urogi',
+  'urami',
+  'gyokko',
+  'gyutaro',
+  'gyutaro_awakened',
+  'boss_daki',
+  'daki_awakened',
+  'kaigaku',
+  'boss_nakime',
+  'boss_muzan',
+  'muzan_final',
+  'muzan_adult',
+  'muzan_female',
+  'muzan_child',
+  'demon_king_tanjiro',
+]);
+
+function isUpperMoonOrKingArchetype(arch?: DemonArchetype): boolean {
+  if (!arch) return false;
+  return UPPER_MOON_OR_KING_ARCHETYPES.has(arch);
 }
 
 export class GameEngine {
@@ -358,11 +453,20 @@ export class GameEngine {
   private waterZones: ArenaWaterZone[] = [];
   private decors: ArenaDecorItem[] = [];
   private exploreCaches: ArenaExploreCache[] = [];
+  private hazards: ArenaHazard[] = [];
+  private dungeonItems: ArenaDungeonItem[] = [];
+  private ambushes: ArenaAmbushTrigger[] = [];
+  private hasDungeonKey = false;
+  private dungeonDoorLocked = false;
   private collectedCacheIdsThisRun = new Set<string>();
   private currentZoneIndex = 1;
   private enemyEngaged = true;
   private activeCampaignCharId = 'tanjiro';
   private equippedDemonSkins: Record<string, string> = {};
+  private difficultyMode: DifficultyMode = 'standard';
+  private swordUpgrades: SwordUpgrades = { edge: 0, alloy: 0, tsuba: 0, scabbard: 0 };
+  private activeTrainingId: string | undefined;
+  private activeSecretBossId: string | undefined;
 
   // Survival 20-Wave Mode
   private survivalWave = 1;
@@ -376,7 +480,9 @@ export class GameEngine {
   private finishingDuration = 1.85;
   private finishingTitle = '';
   private finishingPendingCoins = 0;
-  private finishingPendingRank: 'S' | 'A' | 'B' = 'S';
+  private finishingPendingXp = 30;
+  private finishingPendingRank: CombatRank = 'S';
+  private finishingPendingBreakdown: ScoreBreakdown | null = null;
 
   // Live Boss / Upper Moon Speech Bubble & Sun 13th Form Combo
   private activeSpeechBubble: {
@@ -429,6 +535,7 @@ export class GameEngine {
     heavyPressed: false,
     dodgePressed: false,
     awakeningPressed: false,
+    transparentWorldPressed: false,
     ultimatePressed: false,
     formPressed: 0,
   };
@@ -451,8 +558,15 @@ export class GameEngine {
   private coinsEarnedThisRun = 0;
   private playerLevel = 1;
   private playerXp = 0;
-  private lastRank: 'S' | 'A' | 'B' | null = null;
+  private lastRank: CombatRank | null = null;
+  private lastScoreBreakdown: ScoreBreakdown | null = null;
   private killsThisRun = 0;
+  private perfectDodgesInRun = 0;
+  private noDamageSoFar = true;
+  private breathingFinishersInRun = 0;
+  private chestsFoundInRun = 0;
+  private killedArchetypesThisRun: string[] = [];
+  private totalDamageDealtThisRun = 0;
   private isCurrentBossBattle = false;
 
   private viewW = 1280;
@@ -482,8 +596,22 @@ export class GameEngine {
     this.waterZones = layout.waterZones;
     this.decors = layout.decors;
     this.exploreCaches = layout.exploreCaches;
+    this.hazards = layout.hazards;
+    this.dungeonItems = layout.dungeonItems;
+    this.ambushes = layout.ambushes;
     this.zones = layout.zones;
     this.resize();
+  }
+
+  public setDifficultyMode(mode: DifficultyMode): void {
+    this.difficultyMode = mode;
+    this.emitHudSnapshot();
+  }
+
+  public setSwordUpgrades(upgrades?: SwordUpgrades): void {
+    if (upgrades) {
+      this.swordUpgrades = { ...upgrades };
+    }
   }
 
   public setCoinsBalance(coins: number): void {
@@ -589,6 +717,8 @@ export class GameEngine {
     this.mode = 'TUTORIAL';
     this.mapId = 'mountain_training';
     this.activeCampaignCharId = charId;
+    this.activeTrainingId = undefined;
+    this.activeSecretBossId = undefined;
     this.isCurrentBossBattle = false;
     this.sound.setMusicContext('gameplay', this.mapId, false, undefined, charId);
 
@@ -599,6 +729,11 @@ export class GameEngine {
     this.waterZones = [];
     this.decors = layout.decors;
     this.exploreCaches = [];
+    this.hazards = [];
+    this.dungeonItems = [];
+    this.ambushes = [];
+    this.hasDungeonKey = false;
+    this.dungeonDoorLocked = false;
     this.zones = [];
     this.currentZoneIndex = 1;
     this.enemyEngaged = true;
@@ -612,7 +747,9 @@ export class GameEngine {
       upgrades,
       skinId,
       unlockedAwakenings,
-      equippedUltimate
+      equippedUltimate,
+      this.playerLevel,
+      this.swordUpgrades
     );
     this.enemy = createSlayerFighter('mentor', 'demon', 'giyu', 'water', WORLD_WIDTH * 0.5 + 110);
     this.enemy.name = 'Mentor Urokodaki';
@@ -649,6 +786,33 @@ export class GameEngine {
     this.emitHudSnapshot();
   }
 
+  public advanceTutorialStep(): void {
+    if (this.mode !== 'TUTORIAL' || this.phase !== 'PLAYING') return;
+    if (this.tutorialStep < 10) {
+      this.tutorialStep += 1;
+      if (this.tutorialStep === 8 && this.player.energy < 40) {
+        this.player.energy = 60;
+      }
+      if (this.tutorialStep === 10) {
+        this.player.energy = Math.max(this.player.energy, 60);
+      }
+      this.emitHudSnapshot();
+    } else {
+      this.skipTutorial();
+    }
+  }
+
+  public skipTutorial(): void {
+    if (this.mode !== 'TUTORIAL') return;
+    this.phase = 'VICTORY';
+    this.coinsEarnedThisRun = 50;
+    this.lastRank = 'S';
+    this.clearHeldInputs();
+    this.sound.playVictory();
+    this.callbacks.onTutorialComplete?.();
+    this.emitHudSnapshot();
+  }
+
   private getWaveSpawnX(waveIdx: number, totalWaves: number): number {
     if (totalWaves <= 1) {
       return Math.min(this.worldWidth - 1800, 2650);
@@ -659,7 +823,7 @@ export class GameEngine {
   }
 
   private spawnWaveFighters(spawn: StoryEnemySpawn, waveIdx: number, spawnX: number): void {
-    this.enemy = createDemonFighter(spawn, waveIdx, spawnX, this.equippedDemonSkins);
+    this.enemy = createDemonFighter(spawn, waveIdx, spawnX, this.equippedDemonSkins, this.difficultyMode);
     this.lastEnemySpeechHpPct = 1.0;
     if (spawn.partnerArchetype) {
       const pTpl = DEMON_TEMPLATES[spawn.partnerArchetype];
@@ -673,7 +837,8 @@ export class GameEngine {
         },
         waveIdx + 50,
         Math.min(this.worldWidth - 140, spawnX + 145),
-        this.equippedDemonSkins
+        this.equippedDemonSkins,
+        this.difficultyMode
       );
       this.partnerAI.reset();
     } else {
@@ -733,6 +898,8 @@ export class GameEngine {
     this.mode = 'SURVIVAL';
     this.mapId = mapId;
     this.activeCampaignCharId = charId;
+    this.activeTrainingId = undefined;
+    this.activeSecretBossId = undefined;
     this.survivalWave = 1;
     this.survivalMaxWaves = 20;
     this.survivalCountdown = 0;
@@ -746,6 +913,11 @@ export class GameEngine {
     this.waterZones = layout.waterZones;
     this.decors = layout.decors;
     this.exploreCaches = layout.exploreCaches;
+    this.hazards = layout.hazards;
+    this.dungeonItems = layout.dungeonItems;
+    this.ambushes = [];
+    this.hasDungeonKey = false;
+    this.dungeonDoorLocked = false;
     this.zones = layout.zones.length > 0 ? layout.zones : getMapZones(this.mapId, this.worldWidth);
 
     const playerStartX = Math.round(this.worldWidth * 0.45);
@@ -760,7 +932,9 @@ export class GameEngine {
       upgrades,
       skinId,
       unlockedAwakenings,
-      equippedUltimate
+      equippedUltimate,
+      this.playerLevel,
+      this.swordUpgrades
     );
     const firstSpawn = this.getSurvivalWaveSpawn(1);
     this.isCurrentBossBattle = Boolean(firstSpawn.isBoss);
@@ -801,16 +975,24 @@ export class GameEngine {
     this.currentLevel = level;
     this.mapId = level.mapId;
     this.activeCampaignCharId = charId;
+    this.activeTrainingId = undefined;
+    this.activeSecretBossId = undefined;
     this.waveIndex = 0;
 
-    const layout = createArenaLayout(this.mapId, false);
+    const hasDungeon = Boolean(level.hasUndergroundDungeon) || level.mapId === 'underground_tunnel';
+    const layout = createArenaLayout(this.mapId, false, hasDungeon);
     this.worldWidth = layout.worldWidth;
     this.platforms = layout.platforms;
     this.obstacles = layout.obstacles;
     this.waterZones = layout.waterZones;
     this.decors = layout.decors;
     this.exploreCaches = layout.exploreCaches;
-    this.zones = layout.zones.length > 0 ? layout.zones : getMapZones(this.mapId, this.worldWidth);
+    this.hazards = layout.hazards;
+    this.dungeonItems = layout.dungeonItems;
+    this.ambushes = layout.ambushes;
+    this.hasDungeonKey = false;
+    this.dungeonDoorLocked = this.obstacles.some((o) => o.kind === 'locked_door' && !o.unlocked);
+    this.zones = layout.zones.length > 0 ? layout.zones : getMapZones(this.mapId, this.worldWidth, hasDungeon);
 
     const firstSpawn = level.enemies[0];
     this.isCurrentBossBattle = level.isBossLevel || Boolean(firstSpawn?.isBoss);
@@ -834,7 +1016,9 @@ export class GameEngine {
       upgrades,
       skinId,
       unlockedAwakenings,
-      equippedUltimate
+      equippedUltimate,
+      this.playerLevel,
+      this.swordUpgrades
     );
     this.spawnWaveFighters(firstSpawn, 0, wave0X);
     this.cloneEnemy = null;
@@ -895,6 +1079,8 @@ export class GameEngine {
     this.mode = 'PRACTICE';
     this.mapId = mapId;
     this.activeCampaignCharId = charId;
+    this.activeTrainingId = undefined;
+    this.activeSecretBossId = undefined;
     this.waveIndex = 0;
 
     const layout = createArenaLayout(this.mapId, false);
@@ -904,6 +1090,11 @@ export class GameEngine {
     this.waterZones = layout.waterZones;
     this.decors = layout.decors;
     this.exploreCaches = layout.exploreCaches;
+    this.hazards = layout.hazards;
+    this.dungeonItems = layout.dungeonItems;
+    this.ambushes = [];
+    this.hasDungeonKey = false;
+    this.dungeonDoorLocked = false;
     this.zones = layout.zones.length > 0 ? layout.zones : getMapZones(this.mapId, this.worldWidth);
 
     const tpl = DEMON_TEMPLATES[demonArchetype];
@@ -911,7 +1102,8 @@ export class GameEngine {
       demonArchetype.startsWith('boss_') ||
       demonArchetype.endsWith('_final') ||
       demonArchetype === 'demon_king_tanjiro' ||
-      demonArchetype === 'kokushibo_demon';
+      demonArchetype === 'kokushibo_demon' ||
+      isUpperMoonOrKingArchetype(demonArchetype);
     this.sound.setMusicContext('gameplay', this.mapId, this.isCurrentBossBattle, demonArchetype, charId);
 
     const playerStartX = 1280;
@@ -925,7 +1117,9 @@ export class GameEngine {
       upgrades,
       skinId,
       unlockedAwakenings,
-      equippedUltimate
+      equippedUltimate,
+      this.playerLevel,
+      this.swordUpgrades
     );
     this.spawnWaveFighters(
       {
@@ -953,6 +1147,105 @@ export class GameEngine {
     this.emitHudSnapshot();
   }
 
+  public startTrainingChallenge(
+    challengeId: string,
+    charId: string,
+    breathingStyle: BreathingStyleId,
+    upgrades?: CharacterUpgrades,
+    skinId?: string,
+    unlockedAwakenings?: AwakeningTierId[],
+    equippedUltimate?: UltimateId,
+    equippedDemonSkins?: Record<string, string>
+  ): void {
+    const ch = TRAINING_CHALLENGES.find((c) => c.id === challengeId) ?? TRAINING_CHALLENGES[0];
+    this.startPracticeMatch(
+      ch.mapId,
+      ch.enemyArchetype,
+      charId,
+      breathingStyle,
+      upgrades,
+      skinId,
+      unlockedAwakenings,
+      equippedUltimate,
+      equippedDemonSkins
+    );
+    this.activeTrainingId = ch.id;
+    this.enemy.name = ch.enemyName;
+    this.enemy.subtitle = ch.subtitle;
+    this.emitHudSnapshot();
+  }
+
+  public startSecretBoss(
+    secretId: string,
+    charId: string,
+    breathingStyle: BreathingStyleId,
+    upgrades?: CharacterUpgrades,
+    skinId?: string,
+    unlockedAwakenings?: AwakeningTierId[],
+    equippedUltimate?: UltimateId,
+    equippedDemonSkins?: Record<string, string>
+  ): void {
+    const sb = SECRET_BOSSES.find((s) => s.id === secretId) ?? SECRET_BOSSES[0];
+    this.sound.unlock();
+    if (equippedDemonSkins) this.equippedDemonSkins = { ...equippedDemonSkins };
+    this.mode = 'PRACTICE';
+    this.mapId = sb.mapId;
+    this.activeCampaignCharId = charId;
+    this.activeTrainingId = undefined;
+    this.activeSecretBossId = sb.id;
+    this.waveIndex = 0;
+
+    const layout = createArenaLayout(this.mapId, false, true);
+    this.worldWidth = layout.worldWidth;
+    this.platforms = layout.platforms;
+    this.obstacles = layout.obstacles;
+    this.waterZones = layout.waterZones;
+    this.decors = layout.decors;
+    this.exploreCaches = layout.exploreCaches;
+    this.hazards = layout.hazards;
+    this.dungeonItems = layout.dungeonItems;
+    this.ambushes = [];
+    this.hasDungeonKey = false;
+    this.dungeonDoorLocked = false;
+    this.zones = layout.zones.length > 0 ? layout.zones : getMapZones(this.mapId, this.worldWidth, true);
+
+    this.isCurrentBossBattle = true;
+    this.sound.setMusicContext('gameplay', this.mapId, true, sb.enemy.archetype, charId);
+
+    const playerStartX = Math.round(this.worldWidth * 0.72);
+    const enemyStartX = Math.round(this.worldWidth * 0.72) + 420;
+    this.player = createSlayerFighter(
+      'player',
+      'player',
+      charId,
+      breathingStyle,
+      playerStartX,
+      upgrades,
+      skinId,
+      unlockedAwakenings,
+      equippedUltimate,
+      this.playerLevel,
+      this.swordUpgrades
+    );
+    this.spawnWaveFighters(sb.enemy, 0, enemyStartX);
+    this.cloneEnemy = null;
+    this.allies = [];
+    this.allyAIs = [];
+    this.projectiles = [];
+    this.particles.clear();
+    this.enemyAI.reset();
+    this.cloneAI.reset();
+    this.resetMatchCounters();
+    this.enemyEngaged = true;
+    this.sound.playBossEntrance();
+    this.sound.playDemonLaugh();
+    this.triggerDemonSpeech(this.enemy, 'engage');
+    this.cameraX = (playerStartX + enemyStartX) * 0.5;
+    this.phase = 'PLAYING';
+    this.updateZoneTracker();
+    this.emitHudSnapshot();
+  }
+
   public restartCurrentBattle(
     upgrades?: CharacterUpgrades,
     skinId?: string,
@@ -965,6 +1258,10 @@ export class GameEngine {
     const ult = equippedUltimate ?? this.player.equippedUltimate;
     if (this.mode === 'TUTORIAL') {
       this.startTutorial(charId, style, upgrades, skinId, awks, ult);
+    } else if (this.activeTrainingId) {
+      this.startTrainingChallenge(this.activeTrainingId, charId, style, upgrades, skinId, awks, ult);
+    } else if (this.activeSecretBossId) {
+      this.startSecretBoss(this.activeSecretBossId, charId, style, upgrades, skinId, awks, ult);
     } else if (this.mode === 'STORY') {
       this.startStoryLevel(this.currentLevel.id, charId, style, this.currentLevel, upgrades, skinId, awks, ult);
     } else if (this.mode === 'SURVIVAL') {
@@ -985,7 +1282,15 @@ export class GameEngine {
     this.actionWarningTimer = 0;
     this.coinsEarnedThisRun = 0;
     this.lastRank = null;
+    this.lastScoreBreakdown = null;
+    this.finishingPendingBreakdown = null;
     this.killsThisRun = 0;
+    this.perfectDodgesInRun = 0;
+    this.noDamageSoFar = true;
+    this.breathingFinishersInRun = 0;
+    this.chestsFoundInRun = 0;
+    this.killedArchetypesThisRun = [];
+    this.totalDamageDealtThisRun = 0;
     this.cameraZoom = 1.0;
     this.finishingTimer = 0;
     this.activeSpeechBubble = null;
@@ -1067,6 +1372,12 @@ export class GameEngine {
     this.input.awakeningPressed = true;
   }
 
+  public triggerTransparentWorld(): void {
+    this.sound.unlock();
+    if (this.phase !== 'PLAYING') return;
+    this.input.transparentWorldPressed = true;
+  }
+
   public triggerUltimate(): void {
     this.sound.unlock();
     if (this.phase !== 'PLAYING') return;
@@ -1086,6 +1397,7 @@ export class GameEngine {
     this.input.heavyPressed = false;
     this.input.dodgePressed = false;
     this.input.awakeningPressed = false;
+    this.input.transparentWorldPressed = false;
     this.input.ultimatePressed = false;
     this.input.formPressed = 0;
   }
@@ -1325,6 +1637,7 @@ export class GameEngine {
         }
 
         const targets = [this.player, ...this.allies];
+        const aiRateMult = DIFFICULTY_SCALING[this.difficultyMode]?.aiRateMult ?? 1.0;
         const bdaSpawn = this.enemyAI.update(
           this.enemy,
           targets,
@@ -1334,7 +1647,9 @@ export class GameEngine {
           this.cloneEnemy === null,
           this.enemyEngaged,
           this.obstacles,
-          this.platforms
+          this.platforms,
+          this.partnerEnemy && this.partnerEnemy.hp > 0 ? this.partnerEnemy.x : null,
+          aiRateMult
         );
         this.handleBdaSpawn(this.enemy, bdaSpawn);
 
@@ -1348,7 +1663,9 @@ export class GameEngine {
             false,
             this.enemyEngaged,
             this.obstacles,
-            this.platforms
+            this.platforms,
+            this.enemy.hp > 0 ? this.enemy.x : null,
+            aiRateMult
           );
           this.handleBdaSpawn(this.partnerEnemy, pBda);
         }
@@ -1366,7 +1683,9 @@ export class GameEngine {
               false,
               true,
               this.obstacles,
-              this.platforms
+              this.platforms,
+              this.enemy.hp > 0 ? this.enemy.x : null,
+              aiRateMult
             );
             this.handleBdaSpawn(this.cloneEnemy, cloneBda);
           }
@@ -1390,6 +1709,8 @@ export class GameEngine {
           );
         });
       }
+
+      this.updateWorldMechanics(dt);
     }
 
     this.updateFighter(this.player, dt);
@@ -1417,6 +1738,7 @@ export class GameEngine {
     this.input.heavyPressed = false;
     this.input.dodgePressed = false;
     this.input.awakeningPressed = false;
+    this.input.transparentWorldPressed = false;
     this.input.ultimatePressed = false;
     this.input.formPressed = 0;
 
@@ -1424,6 +1746,155 @@ export class GameEngine {
     if (this.hudEmitAccum >= 0.05) {
       this.hudEmitAccum = 0;
       this.emitHudSnapshot();
+    }
+  }
+
+  private updateWorldMechanics(dt: number): void {
+    const p = this.player;
+
+    // Collapsing bridges
+    for (const plat of this.platforms) {
+      if (plat.kind !== 'collapsing_bridge') continue;
+      if (plat.collapseState === 'shaking') {
+        plat.collapseTimer = Math.max(0, (plat.collapseTimer ?? 0) - dt);
+        plat.x = plat.baseX + Math.sin(this.matchTime * 48) * 3.5;
+        if (plat.collapseTimer <= 0) {
+          plat.collapseState = 'collapsed';
+          plat.collapseTimer = 2.8;
+          this.particles.spawnWoodShards(plat.x + plat.w * 0.5, plat.y, true);
+          this.sound.playWoodBreak();
+        }
+      } else if (plat.collapseState === 'collapsed') {
+        plat.collapseTimer = Math.max(0, (plat.collapseTimer ?? 0) - dt);
+        if (plat.collapseTimer <= 0) {
+          plat.collapseState = 'intact';
+          plat.x = plat.baseX;
+        }
+      }
+    }
+
+    // Dungeon items (Key, Secret Chests)
+    for (const item of this.dungeonItems) {
+      if (item.collected || item.kind === 'lantern_brazier') continue;
+      if (Math.abs(p.x - item.x) <= 56 && Math.abs(p.y - item.y) <= 84) {
+        item.collected = true;
+        this.sound.playExplorePickup();
+        if (item.kind === 'dungeon_key') {
+          this.hasDungeonKey = true;
+          for (const obs of this.obstacles) {
+            if (obs.kind === 'locked_door') {
+              obs.unlocked = true;
+              obs.solid = false;
+              obs.hp = 0;
+            }
+          }
+          this.dungeonDoorLocked = false;
+          this.particles.spawnFloatingText(item.x, item.y - 72, 'SANCTUM KEY ACQUIRED · GATE UNLOCKED!', '#fde047', 1.25);
+        } else if (item.kind === 'secret_chest') {
+          const coins = item.coins ?? 45;
+          this.chestsFoundInRun += 1;
+          this.coinsEarnedThisRun += coins;
+          this.callbacks.onExploreCachePickup?.(item.id, coins);
+          p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.16));
+          p.energy = Math.min(p.maxEnergy, p.energy + 25);
+          this.particles.spawnFloatingText(item.x, item.y - 72, `SECRET CHEST! +${coins} COINS`, '#fbbf24', 1.2);
+        }
+      }
+    }
+
+    // Ambush triggers inside story/dungeon zones
+    for (const amb of this.ambushes) {
+      if (amb.triggered) continue;
+      if (p.x >= amb.triggerX) {
+        amb.triggered = true;
+        this.sound.playDemonRoar();
+        this.particles.spawnFloatingText(p.x + 80, p.y - 135, `AMBUSH! ${amb.name.toUpperCase()}`, '#fb7185', 1.25);
+        if (!this.cloneEnemy && this.mode === 'STORY') {
+          this.cloneEnemy = createDemonFighter(
+            {
+              archetype: amb.archetype,
+              name: amb.name,
+              subtitle: amb.subtitle,
+              hpScale: 0.72,
+              damageScale: 0.9,
+            },
+            77,
+            Math.min(this.worldWidth - 160, p.x + 280),
+            this.equippedDemonSkins,
+            this.difficultyMode
+          );
+          this.cloneAI.reset();
+        }
+      }
+    }
+
+    // Interactive Environmental & Class-Spawned Hazards
+    for (let i = this.hazards.length - 1; i >= 0; i--) {
+      const h = this.hazards[i];
+      h.hitCooldown = Math.max(0, h.hitCooldown - dt);
+      h.timer += dt;
+
+      if (h.kind === 'falling_rock') {
+        const phaseT = h.timer % Math.max(1.2, h.cycleDuration);
+        if (phaseT < h.cycleDuration * 0.45) {
+          h.telegraphing = true;
+          h.active = false;
+          h.rockY = -90;
+          h.rockVy = 0;
+        } else if (phaseT < h.cycleDuration * 0.8) {
+          h.telegraphing = false;
+          h.active = true;
+          h.rockVy = (h.rockVy ?? 0) + GRAVITY * 0.75 * dt;
+          h.rockY = Math.min(GROUND_Y - 22, (h.rockY ?? 120) + h.rockVy * dt);
+        } else {
+          h.telegraphing = false;
+          h.active = false;
+        }
+      } else if (h.kind === 'fire_trap' || h.kind === 'spike_trap' || h.kind === 'blood_trap') {
+        const phaseT = h.timer % Math.max(1.2, h.cycleDuration);
+        h.telegraphing = phaseT >= h.cycleDuration * 0.35 && phaseT < h.cycleDuration * 0.6;
+        h.active = phaseT >= h.cycleDuration * 0.6;
+        if (h.kind === 'blood_trap' && h.timer > 7.5) {
+          this.hazards.splice(i, 1);
+          continue;
+        }
+      } else {
+        // poison_pool / pit_hazard / ice_patch stay active; expire spawned pools after 8s if prefixed
+        if (h.id.startsWith('spawn_') && h.timer > 8.0) {
+          this.hazards.splice(i, 1);
+          continue;
+        }
+        h.active = true;
+        h.telegraphing = false;
+      }
+
+      if (h.active && h.hitCooldown <= 0 && p.hp > 0 && p.state !== 'DODGE' && p.invulnTimer <= 0) {
+        const hBox =
+          h.kind === 'falling_rock'
+            ? { x: h.x, y: (h.rockY ?? GROUND_Y - 40) - 22, w: h.w, h: 44 }
+            : { x: h.x, y: GROUND_Y - 26, w: h.w, h: 28 };
+        const pHurt = getFighterHurtbox(p);
+        if (rectsOverlap(hBox, pHurt)) {
+          h.hitCooldown = 0.85;
+          if (h.kind === 'ice_patch') {
+            p.chillTimer = Math.max(p.chillTimer, 2.0);
+            this.particles.spawnFloatingText(p.x, p.y - 105, 'FROST CHILL!', '#bae6fd', 0.9);
+          } else {
+            const prevHp = p.hp;
+            const dmg = Math.max(4, Math.round(h.damage * (1 - (p.defenseReduction ?? 0) * 0.5)));
+            p.hp = Math.max(0, p.hp - dmg);
+            p.damageTaken += dmg;
+            p.hitFlashTimer = 0.14;
+            if (p.hp < prevHp) this.noDamageSoFar = false;
+            if (h.kind === 'poison_pool') {
+              p.poisonTimer = 2.6;
+              p.poisonDps = 3.2;
+            }
+            this.sound.playHit(false);
+            this.particles.spawnFloatingText(p.x, p.y - 110, `-${dmg} TRAP!`, '#fb7185', 1.0);
+          }
+        }
+      }
     }
   }
 
@@ -1437,6 +1908,23 @@ export class GameEngine {
     if (typeof bdaSpawn.teleportToX === 'number') {
       source.x = Math.max(ARENA_LEFT + 60, Math.min(rightBound - 60, bdaSpawn.teleportToX));
       this.particles.spawnDust(source.x, source.y, 8, 0);
+    }
+    if (bdaSpawn.spawnHazard) {
+      const sh = bdaSpawn.spawnHazard;
+      this.hazards.push({
+        id: `spawn_${this.nextProjectileId++}`,
+        x: Math.max(ARENA_LEFT + 20, Math.min(rightBound - sh.w - 20, sh.x)),
+        y: sh.y,
+        w: sh.w,
+        h: sh.h,
+        kind: sh.kind,
+        damage: sh.damage,
+        timer: 0,
+        cycleDuration: sh.cycleDuration,
+        active: sh.kind === 'poison_pool' || sh.kind === 'ice_patch',
+        telegraphing: sh.kind !== 'poison_pool' && sh.kind !== 'ice_patch',
+        hitCooldown: 0.25,
+      });
     }
     if (bdaSpawn.projectiles && bdaSpawn.projectiles.length > 0) {
       for (const pSpec of bdaSpawn.projectiles) {
@@ -1455,7 +1943,9 @@ export class GameEngine {
           hpScale: 0.65,
         },
         99,
-        Math.max(ARENA_LEFT + 80, Math.min(rightBound - 80, source.x - source.facing * 120))
+        Math.max(ARENA_LEFT + 80, Math.min(rightBound - 80, source.x - source.facing * 120)),
+        this.equippedDemonSkins,
+        this.difficultyMode
       );
       this.cloneAI.reset();
     }
@@ -1489,6 +1979,7 @@ export class GameEngine {
         if (!this.collectedCacheIdsThisRun.has(c.id)) {
           this.collectedCacheIdsThisRun.add(c.id);
           this.coinsEarnedThisRun += c.coins;
+          this.chestsFoundInRun += 1;
           this.callbacks.onExploreCachePickup?.(c.id, c.coins);
         }
         if (c.hp > 0) {
@@ -1501,6 +1992,9 @@ export class GameEngine {
           p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.12));
         } else if (c.kind === 'spirit_shrine') {
           p.awakeningMeter = Math.min(100, p.awakeningMeter + 22);
+        } else if (c.kind === 'secret_chest') {
+          p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.16));
+          p.energy = Math.min(p.maxEnergy, p.energy + 25);
         }
         this.sound.playExplorePickup();
         this.particles.spawnFloatingText(
@@ -1555,6 +2049,31 @@ export class GameEngine {
       p.state === 'FALL' ||
       p.state === 'BLOCK';
 
+    // Transparent World active ability (Strictly Upper Moon & Demon King boss fights ONLY)
+    if (this.input.transparentWorldPressed) {
+      const hasUpperOrKing =
+        this.isCurrentBossBattle &&
+        (isUpperMoonOrKingArchetype(this.enemy.demonArchetype) ||
+          isUpperMoonOrKingArchetype(this.partnerEnemy?.demonArchetype));
+
+      if (!hasUpperOrKing) {
+        this.showWarning('Transparent World only awakens vs Upper Moons & Demon King!');
+      } else if (p.transparentWorldActive) {
+        this.showWarning('Transparent World already active!');
+      } else if ((p.transparentWorldCooldown ?? 0) > 0.1) {
+        this.showWarning(`Transparent World recharging (${(p.transparentWorldCooldown ?? 0).toFixed(1)}s)`);
+      } else {
+        p.transparentWorldActive = true;
+        p.transparentWorldTimer = TRANSPARENT_WORLD_DURATION;
+        p.transparentWorldCooldown = TRANSPARENT_WORLD_COOLDOWN;
+        p.invulnTimer = Math.max(p.invulnTimer, 0.45);
+        this.sound.playAwakening();
+        this.particles.spawnAwakeningBurst(p.x, p.y, '#38bdf8');
+        this.particles.spawnFloatingText(p.x, p.y - 145, 'TRANSPARENT WORLD! WEAK POINTS EXPOSED', '#38bdf8', 1.25);
+        this.shakeIntensity = Math.max(this.shakeIntensity, 8);
+      }
+    }
+
     // Awakening activation
     if (this.input.awakeningPressed && (canAct || p.state === 'LIGHT_ATTACK')) {
       if (p.awakeningActive) {
@@ -1578,6 +2097,14 @@ export class GameEngine {
       }
     }
 
+    const milestones = getMilestoneBonuses(this.playerLevel);
+    const cdFactor = Math.max(0.55, 1 - milestones.cooldownReduction - this.swordUpgrades.scabbard * 0.06);
+    const formPowerMult =
+      1 +
+      milestones.formDamageBonus +
+      this.swordUpgrades.alloy * 0.1 +
+      (this.isCurrentBossBattle ? milestones.bossDamageBonus : 0);
+
     // Special Ultimate Attack activation
     if (this.input.ultimatePressed && (canAct || p.state === 'LIGHT_ATTACK' || p.state === 'RUNNING_ATTACK')) {
       const ultId = p.equippedUltimate ?? 'eternal_sun';
@@ -1587,9 +2114,9 @@ export class GameEngine {
       } else if (p.energy < ultDef.energyCost) {
         this.showWarning(`Need ${ultDef.energyCost}% Energy for Ultimate`);
       } else {
-        const spec = buildUltimateAttackSpec(ultId, p.breathingStyle, p.damageMult);
+        const spec = buildUltimateAttackSpec(ultId, p.breathingStyle, p.damageMult * formPowerMult);
         p.energy -= ultDef.energyCost;
-        p.ultimateCooldown = ultDef.cooldown;
+        p.ultimateCooldown = ultDef.cooldown * cdFactor;
         p.currentAttack = spec;
         this.beginStateTransition(p, 'BREATHING_FORM', 0.05);
         p.stateTimer = 0;
@@ -1635,9 +2162,9 @@ export class GameEngine {
       } else if (p.energy < cost) {
         this.showWarning(`Need ${cost}% Breathing Energy`);
       } else {
-        const spec = buildBreathingAttackSpec(p.breathingStyle, idx, p.damageMult);
+        const spec = buildBreathingAttackSpec(p.breathingStyle, idx, p.damageMult * formPowerMult);
         p.energy -= cost;
-        p.formCooldowns[idx - 1] = formDef.cooldown;
+        p.formCooldowns[idx - 1] = formDef.cooldown * cdFactor;
         p.currentAttack = spec;
         this.beginStateTransition(p, 'BREATHING_FORM', 0.06);
         p.stateTimer = 0;
@@ -1685,7 +2212,7 @@ export class GameEngine {
       p.stateTimer = 0;
       p.vx = moveDir * DODGE_SPEED * p.speedMult;
       p.dodgeCooldown = DODGE_COOLDOWN;
-      p.invulnTimer = DODGE_DURATION;
+      p.invulnTimer = DODGE_DURATION + (p.dodgeIFrameBonus ?? 0);
       p.currentAttack = null;
       this.sound.playDodge();
       if (p.grounded && this.isInWaterZone(p.x)) {
@@ -2060,6 +2587,15 @@ export class GameEngine {
 
     f.awakeningCooldown = Math.max(0, f.awakeningCooldown - dt);
     f.ultimateCooldown = Math.max(0, f.ultimateCooldown - dt);
+    f.shieldTimer = Math.max(0, (f.shieldTimer ?? 0) - dt);
+    f.transparentWorldCooldown = Math.max(0, (f.transparentWorldCooldown ?? 0) - dt);
+    if (f.transparentWorldActive) {
+      f.transparentWorldTimer = (f.transparentWorldTimer ?? 0) - dt;
+      if ((f.transparentWorldTimer ?? 0) <= 0) {
+        f.transparentWorldActive = false;
+        f.transparentWorldTimer = 0;
+      }
+    }
     f.redBladeBurnTimer = Math.max(0, f.redBladeBurnTimer - dt);
     if (f.consecutiveHitTimer > 0) {
       f.consecutiveHitTimer = Math.max(0, f.consecutiveHitTimer - dt);
@@ -2261,6 +2797,7 @@ export class GameEngine {
     let landedOnSurface = false;
     if (f.vy >= 0) {
       for (const plat of this.platforms) {
+        if (plat.collapseState === 'collapsed') continue;
         if (f.x + 12 >= plat.x && f.x - 12 <= plat.x + plat.w) {
           if (prevY <= plat.y + 12 && f.y >= plat.y - 2) {
             if (!f.grounded && f.vy > 240) {
@@ -2270,6 +2807,10 @@ export class GameEngine {
             f.vy = 0;
             f.grounded = true;
             landedOnSurface = true;
+            if (plat.kind === 'collapsing_bridge' && plat.collapseState === 'intact' && f.role === 'player') {
+              plat.collapseState = 'shaking';
+              plat.collapseTimer = 0.65;
+            }
             if (f.state === 'JUMP' || f.state === 'FALL') {
               this.beginStateTransition(f, 'IDLE', 0.06);
             }
@@ -2386,8 +2927,13 @@ export class GameEngine {
 
     for (const foe of enemies) {
       if (foe.hp <= 0) continue;
+      const prevFoeHp = foe.hp;
       const pHit = resolveAttackHit(this.player, foe, this.particles, this.sound);
       if (pHit.landed) {
+        this.totalDamageDealtThisRun += Math.max(0, prevFoeHp - foe.hp);
+        if (foe.hp <= 0 && (this.player.state === 'BREATHING_FORM' || this.player.currentAttack?.kind === 'ULTIMATE_ATTACK')) {
+          this.breathingFinishersInRun += 1;
+        }
         if (this.gameplaySettings.cinematicEffects) {
           this.hitstopTimer = Math.max(this.hitstopTimer, pHit.hitstop);
         }
@@ -2416,7 +2962,14 @@ export class GameEngine {
     // Active enemies vs Player & Allies
     for (const foe of enemies) {
       if (foe.hp <= 0) continue;
+      const prevPlayerHp = this.player.hp;
       const dHit = resolveAttackHit(foe, this.player, this.particles, this.sound);
+      if (dHit.perfectDodged) {
+        this.perfectDodgesInRun += 1;
+      }
+      if (this.player.hp < prevPlayerHp) {
+        this.noDamageSoFar = false;
+      }
       if (dHit.landed || dHit.blocked) {
         if (this.gameplaySettings.cinematicEffects) {
           this.hitstopTimer = Math.max(this.hitstopTimer, dHit.hitstop);
@@ -2491,9 +3044,13 @@ export class GameEngine {
           const dmg = blocked
             ? Math.max(2, Math.round(proj.damage * 0.2))
             : Math.max(1, Math.round(proj.damage * (1 - defReduction)));
+          const prevHp = t.hp;
           t.hp = Math.max(0, t.hp - dmg);
           t.damageTaken += dmg;
           t.hitFlashTimer = 0.14;
+          if (t.id === this.player.id && t.hp < prevHp) {
+            this.noDamageSoFar = false;
+          }
           if (blocked) {
             this.particles.spawnParrySparks(proj.x, proj.y, false);
             this.sound.playParry();
@@ -2562,21 +3119,59 @@ export class GameEngine {
     this.emitHudSnapshot();
   }
 
+  private isOptionalObjectiveMet(): boolean {
+    if (this.mode !== 'STORY') return false;
+    const opt = this.currentLevel.optionalObjective;
+    if (!opt) return false;
+    if (opt.id === 'no_damage') return this.noDamageSoFar;
+    if (opt.id === 'perfect_dodges') return this.perfectDodgesInRun >= 2;
+    if (opt.id === 'breathing_finisher') return this.breathingFinishersInRun >= 1;
+    if (opt.id === 'secret_chest') return this.chestsFoundInRun >= 1;
+    if (opt.id === 'fast_clear') return this.matchTime <= 65;
+    return false;
+  }
+
   private finalizeMatchVictory(): void {
     this.phase = 'VICTORY';
-    const hpPct = this.player.hp / this.player.maxHp;
-    const rank: 'S' | 'A' | 'B' = hpPct >= 0.72 ? 'S' : hpPct >= 0.4 ? 'A' : 'B';
+    const rank = this.finishingPendingRank;
     const coinsEarned = this.finishingPendingCoins;
+    const xpEarned = this.finishingPendingXp;
+    const breakdown: ScoreBreakdown = this.finishingPendingBreakdown ?? {
+      baseCoins: coinsEarned,
+      baseXp: xpEarned,
+      rankBonusCoins: 0,
+      dodgeBonusCoins: 0,
+      noDamageBonusCoins: 0,
+      finisherBonusCoins: 0,
+      objectiveBonusCoins: 0,
+      objectiveBonusXp: 0,
+      chestCoins: 0,
+      totalCoins: coinsEarned,
+      totalXp: xpEarned,
+    };
     this.coinsEarnedThisRun = coinsEarned;
     this.lastRank = rank;
+    this.lastScoreBreakdown = breakdown;
     this.clearHeldInputs();
     this.sound.playVictory();
+    const extras: LevelRunExtras = {
+      demonsDefeated: this.killsThisRun,
+      bossesDefeated: this.isCurrentBossBattle ? 1 : 0,
+      perfectDodges: this.perfectDodgesInRun,
+      noDamage: this.noDamageSoFar,
+      breathingFinishers: this.breathingFinishersInRun,
+      chestsFound: this.chestsFoundInRun,
+      killedArchetypes: [...this.killedArchetypesThisRun],
+      totalDamageDealt: this.totalDamageDealtThisRun,
+      trainingId: this.activeTrainingId,
+      secretBossId: this.activeSecretBossId,
+    };
     if (this.mode === 'STORY') {
-      this.callbacks.onLevelComplete?.(this.currentLevel.id, rank, coinsEarned, this.killsThisRun);
+      this.callbacks.onLevelComplete?.(this.currentLevel.id, rank, coinsEarned, this.killsThisRun, xpEarned, breakdown, extras);
     } else if (this.mode === 'SURVIVAL') {
       this.callbacks.onSurvivalComplete?.(this.survivalWave, true, coinsEarned, this.survivalDefeatedCount);
     } else {
-      this.callbacks.onLevelComplete?.(0, rank, coinsEarned, this.killsThisRun);
+      this.callbacks.onLevelComplete?.(0, rank, coinsEarned, this.killsThisRun, xpEarned, breakdown, extras);
     }
     this.emitHudSnapshot();
   }
@@ -2594,6 +3189,8 @@ export class GameEngine {
     if (waveCleared) {
       const defeatedNow = this.partnerEnemy ? 2 : 1;
       this.killsThisRun += defeatedNow;
+      if (this.enemy.demonArchetype) this.killedArchetypesThisRun.push(this.enemy.demonArchetype);
+      if (this.partnerEnemy?.demonArchetype) this.killedArchetypesThisRun.push(this.partnerEnemy.demonArchetype);
 
       if (this.mode === 'SURVIVAL') {
         this.survivalDefeatedCount += defeatedNow;
@@ -2670,18 +3267,69 @@ export class GameEngine {
         this.enemy.state = 'DEFEATED';
       }
 
-      const hpPct = this.player.hp / this.player.maxHp;
-      const rank: 'S' | 'A' | 'B' = hpPct >= 0.72 ? 'S' : hpPct >= 0.4 ? 'A' : 'B';
-      const rankBonus = rank === 'S' ? 25 : rank === 'A' ? 12 : 0;
-      const baseReward =
-        this.mode === 'STORY'
-          ? this.currentLevel.rewardCoins
-          : this.mode === 'SURVIVAL'
-            ? this.coinsEarnedThisRun + 140
-            : 35;
-      this.finishingPendingCoins =
-        this.mode === 'SURVIVAL' ? baseReward : baseReward + rankBonus + this.killsThisRun * 10;
+      const hpPct = this.player.hp / Math.max(1, this.player.maxHp);
+      const rank = calculateCombatRank({
+        hpPct,
+        perfectDodges: this.perfectDodgesInRun,
+        damageTaken: this.player.damageTaken,
+        maxCombo: this.player.hitCount,
+        matchTime: this.matchTime,
+        breathingKills: this.breathingFinishersInRun,
+      });
+
+      const diffMult = DIFFICULTY_SCALING[this.difficultyMode]?.rewardMult ?? 1.0;
+      const trainingDef = this.activeTrainingId ? TRAINING_CHALLENGES.find((c) => c.id === this.activeTrainingId) : undefined;
+      const secretDef = this.activeSecretBossId ? SECRET_BOSSES.find((s) => s.id === this.activeSecretBossId) : undefined;
+
+      const baseCoins = trainingDef
+        ? Math.round(trainingDef.rewardCoins * diffMult)
+        : secretDef
+          ? Math.round(secretDef.rewardCoins * diffMult)
+          : this.mode === 'STORY'
+            ? Math.round(this.currentLevel.rewardCoins * diffMult)
+            : this.mode === 'SURVIVAL'
+              ? this.coinsEarnedThisRun + 140
+              : 35;
+      const baseXp = trainingDef
+        ? Math.round(trainingDef.rewardXp * diffMult)
+        : secretDef
+          ? Math.round(secretDef.rewardXp * diffMult)
+          : this.mode === 'STORY'
+            ? Math.round((this.currentLevel.rewardXp ?? 30) * diffMult)
+            : this.mode === 'SURVIVAL'
+              ? 120
+              : 25;
+
+      const rankCoinsMap: Record<CombatRank, number> = { SSS: 45, SS: 30, S: 20, A: 10, B: 5, C: 0, D: 0 };
+      const rankBonusCoins = this.mode === 'SURVIVAL' ? 0 : rankCoinsMap[rank];
+      const dodgeBonusCoins = Math.min(30, this.perfectDodgesInRun * 6);
+      const noDamageBonusCoins = this.noDamageSoFar ? 25 : 0;
+      const finisherBonusCoins = this.breathingFinishersInRun > 0 ? 15 : 0;
+      const objMet = this.isOptionalObjectiveMet();
+      const objectiveBonusCoins = objMet && this.currentLevel.optionalObjective ? this.currentLevel.optionalObjective.bonusCoins : 0;
+      const objectiveBonusXp = objMet && this.currentLevel.optionalObjective ? this.currentLevel.optionalObjective.bonusXp : 0;
+      const chestCoins = this.mode === 'SURVIVAL' ? 0 : this.coinsEarnedThisRun;
+
+      const totalCoins =
+        baseCoins + rankBonusCoins + dodgeBonusCoins + noDamageBonusCoins + finisherBonusCoins + objectiveBonusCoins;
+      const totalXp = baseXp + objectiveBonusXp + (rank === 'SSS' || rank === 'SS' ? 12 : rank === 'S' ? 6 : 0);
+
+      this.finishingPendingCoins = totalCoins;
+      this.finishingPendingXp = totalXp;
       this.finishingPendingRank = rank;
+      this.finishingPendingBreakdown = {
+        baseCoins,
+        baseXp,
+        rankBonusCoins,
+        dodgeBonusCoins,
+        noDamageBonusCoins,
+        finisherBonusCoins,
+        objectiveBonusCoins,
+        objectiveBonusXp,
+        chestCoins,
+        totalCoins: totalCoins + chestCoins,
+        totalXp,
+      };
 
       this.finishingTimer = 0;
       this.finishingTitle = `FINAL EXECUTION · ${this.enemy.name.split('·')[0].trim().toUpperCase()}`;
@@ -2782,8 +3430,9 @@ export class GameEngine {
       this.enemy.hp > 0 &&
       (this.enemy.demonArchetype === 'boss_doma' || this.enemy.demonArchetype === 'doma_final');
     const showWeakPoints =
-      this.player.awakeningActive &&
-      (this.player.awakeningTier === 'transparent_world' || this.player.awakeningTier === 'transcendent');
+      Boolean(this.player.transparentWorldActive) ||
+      (this.player.awakeningActive &&
+        (this.player.awakeningTier === 'transparent_world' || this.player.awakeningTier === 'transcendent'));
 
     this.arena.renderWorldBehindCharacters(
       ctx,
@@ -2795,7 +3444,9 @@ export class GameEngine {
       this.waterZones,
       this.decors,
       this.exploreCaches,
-      isDomaFrost
+      isDomaFrost,
+      this.hazards,
+      this.dungeonItems
     );
 
     if (this.mode === 'TUTORIAL') {
@@ -2833,6 +3484,36 @@ export class GameEngine {
     }
 
     ctx.restore();
+
+    const currentZone = this.zones[this.currentZoneIndex - 1];
+    const inDarkZone =
+      this.mode !== 'TUTORIAL' && (Boolean(currentZone?.isDarkZone) || this.mapId === 'underground_tunnel');
+    if (inDarkZone) {
+      const toScreenX = (wx: number) => this.viewW * 0.5 + shakeX + (wx - this.cameraX) * scale;
+      const toScreenY = (wy: number) => groundAnchorOffsetY + shakeY + wy * scale;
+      const lights: Array<{ x: number; y: number; radius: number }> = [
+        { x: toScreenX(this.player.x), y: toScreenY(this.player.y - 54), radius: Math.max(150, 235 * scale) },
+      ];
+      if (this.enemy.hp > 0 && this.enemyEngaged) {
+        lights.push({
+          x: toScreenX(this.enemy.x),
+          y: toScreenY(this.enemy.y - 58),
+          radius: Math.max(95, 130 * scale),
+        });
+      }
+      for (const ally of this.allies) {
+        if (ally.hp > 0) {
+          lights.push({ x: toScreenX(ally.x), y: toScreenY(ally.y - 52), radius: Math.max(100, 145 * scale) });
+        }
+      }
+      for (const di of this.dungeonItems) {
+        if (di.kind === 'lantern_brazier') {
+          lights.push({ x: toScreenX(di.x), y: toScreenY(di.y - 42), radius: Math.max(110, 170 * scale) });
+        }
+      }
+      const darkAlpha = this.mapId === 'underground_tunnel' ? 0.72 : 0.62;
+      this.arena.renderDarkDungeonLighting(ctx, this.viewW, this.viewH, darkAlpha, lights);
+    }
 
     if (this.phase === 'FINISHING') {
       const progress = Math.min(1, this.finishingTimer / this.finishingDuration);
@@ -2889,6 +3570,14 @@ export class GameEngine {
         : null;
 
     const styleDef = BREATHING_STYLES[this.player.breathingStyle];
+    const hasUpperOrKing =
+      this.isCurrentBossBattle &&
+      (isUpperMoonOrKingArchetype(this.enemy.demonArchetype) ||
+        isUpperMoonOrKingArchetype(this.partnerEnemy?.demonArchetype));
+    const inDarkDungeon =
+      this.mode !== 'TUTORIAL' && (Boolean(currentZone?.isDarkZone) || this.mapId === 'underground_tunnel');
+    const trainingDef = this.activeTrainingId ? TRAINING_CHALLENGES.find((c) => c.id === this.activeTrainingId) : undefined;
+    const secretDef = this.activeSecretBossId ? SECRET_BOSSES.find((s) => s.id === this.activeSecretBossId) : undefined;
 
     this.callbacks.onHudUpdate({
       phase: this.phase,
@@ -2897,12 +3586,17 @@ export class GameEngine {
       levelTitle:
         this.mode === 'TUTORIAL'
           ? 'Mt. Sagiri Boulder Trial'
-          : this.mode === 'SURVIVAL'
-            ? `Survival Mode · Wave ${this.survivalWave}/20`
-            : this.mode === 'PRACTICE'
-              ? `Free Battle · ${MAP_DISPLAY_NAMES[this.mapId]}`
-              : `Lv.${this.currentLevel.id} · ${this.currentLevel.title}`,
+          : trainingDef
+            ? `Hashira Trial · ${trainingDef.title}`
+            : secretDef
+              ? `Secret Boss · ${secretDef.title}`
+              : this.mode === 'SURVIVAL'
+                ? `Survival Mode · Wave ${this.survivalWave}/20`
+                : this.mode === 'PRACTICE'
+                  ? `Free Battle · ${MAP_DISPLAY_NAMES[this.mapId]}`
+                  : `Lv.${this.currentLevel.id} · ${this.currentLevel.title}`,
       mapId: this.mapId,
+      difficultyMode: this.difficultyMode,
       playerName: this.player.name,
       playerHp: this.player.hp,
       playerMaxHp: this.player.maxHp,
@@ -2925,6 +3619,10 @@ export class GameEngine {
       equippedUltimate: this.player.equippedUltimate,
       ultimateCooldown: this.player.ultimateCooldown,
       maxUltimateCooldown: ULTIMATE_SPECS[this.player.equippedUltimate].cooldown,
+      transparentWorldActive: Boolean(this.player.transparentWorldActive),
+      transparentWorldTimer: this.player.transparentWorldTimer ?? 0,
+      transparentWorldCooldown: this.player.transparentWorldCooldown ?? 0,
+      transparentWorldAvailable: hasUpperOrKing,
       finishingTitle: this.phase === 'FINISHING' ? this.finishingTitle : undefined,
 
       survivalWave: this.mode === 'SURVIVAL' ? this.survivalWave : 0,
@@ -2951,6 +3649,7 @@ export class GameEngine {
         this.mode === 'TUTORIAL'
           ? null
           : this.enemyAI.getTelegraph() ?? (this.partnerEnemy ? this.partnerAI.getTelegraph() : null),
+      enemyDemonClass: this.enemy.demonClass,
 
       partnerEnemyName: this.partnerEnemy ? this.partnerEnemy.name : null,
       partnerEnemyHp: this.partnerEnemy ? this.partnerEnemy.hp : 0,
@@ -2964,6 +3663,14 @@ export class GameEngine {
       advancePrompt,
       playerWorldX: this.player.x,
       worldWidth: this.worldWidth,
+      inDarkDungeon,
+      hasDungeonKey: this.hasDungeonKey,
+      dungeonDoorLocked: this.dungeonDoorLocked,
+      secretsFoundInRun: this.chestsFoundInRun,
+      bonusObjectiveLabel: this.mode === 'STORY' ? this.currentLevel.optionalObjective?.label ?? null : null,
+      bonusObjectiveMet: this.isOptionalObjectiveMet(),
+      perfectDodgesInRun: this.perfectDodgesInRun,
+      noDamageSoFar: this.noDamageSoFar,
 
       tutorialStep: this.tutorialStep,
       tutorialTitle: stepDef.title,
@@ -2977,7 +3684,9 @@ export class GameEngine {
       playerLevel: this.playerLevel,
       playerXp: this.playerXp,
       playerXpToNext: getXpForNextLevel(this.playerLevel),
+      totalPlayerXp: getTotalXpForProfile(this.playerLevel, this.playerXp),
       lastRank: this.lastRank,
+      scoreBreakdown: this.lastScoreBreakdown,
       comboCount: this.player.hitCount,
       muted: this.sound.isMuted(),
       matchTime: this.matchTime,
