@@ -455,6 +455,8 @@ export default function App() {
         engine.triggerBreathingForm(9);
       } else if (code === 'Digit0') {
         engine.triggerBreathingForm(10);
+      } else if (code === 'KeyF') {
+        engine.interactNearbyInvestigation();
       }
     };
 
@@ -978,6 +980,7 @@ export default function App() {
       {hud.phase !== 'TITLE_MENU' && !activeCutscene && (
         <GameHud
           hud={hud}
+          hudPreset={save.gameplay.hudPreset}
           onTogglePause={() => engineRef.current?.togglePause()}
           onToggleMute={handleToggleMuteHud}
           onTriggerForm={(idx) => engineRef.current?.triggerBreathingForm(idx)}
@@ -986,6 +989,8 @@ export default function App() {
           onTriggerUltimate={() => engineRef.current?.triggerUltimate()}
           onAdvanceTutorial={() => engineRef.current?.advanceTutorialStep()}
           onSkipTutorial={() => engineRef.current?.skipTutorial()}
+          onInteractInvestigation={() => engineRef.current?.interactNearbyInvestigation()}
+          onDismissInvestigationDialogue={() => engineRef.current?.dismissInvestigationDialogue()}
         />
       )}
 
@@ -995,6 +1000,7 @@ export default function App() {
           engine={engineRef.current}
           hud={hud}
           controlsLayout={save.controlsLayout}
+          controlScale={save.gameplay.controlScale}
         />
       )}
 

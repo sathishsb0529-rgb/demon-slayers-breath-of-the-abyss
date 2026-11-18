@@ -874,6 +874,8 @@ export interface AudioSettings {
   subtitlesEnabled: boolean;
 }
 
+export type HudPreset = 'minimal' | 'standard' | 'detailed';
+
 export interface GameplaySettings {
   bloodEffectsEnabled: boolean;
   combatVisualEffects: boolean;
@@ -881,6 +883,21 @@ export interface GameplaySettings {
   dialogueEnabled: boolean;
   cameraEffects: boolean;
   performanceMode: boolean;
+  hudPreset: HudPreset;
+  controlScale: number; // 0.8..1.25
+}
+
+export interface InvestigationPoint {
+  id: string;
+  x: number;
+  y: number;
+  kind: 'damaged_house' | 'broken_sword' | 'belongings' | 'bloodstains' | 'footprints' | 'survivor' | 'demon_lair';
+  title: string;
+  speaker: string;
+  dialogue: string;
+  playerReply?: string;
+  discovered: boolean;
+  isHorrorReveal?: boolean;
 }
 
 export type TouchControlId =
@@ -1121,6 +1138,13 @@ export interface HudSnapshot {
   zoneIndex: number;
   zoneTotal: number;
   zoneName: string;
+  chapterNumber?: number;
+  chapterTitle?: string;
+  objectiveText?: string;
+  inCombat?: boolean;
+  navTargetName?: string | null;
+  navDistanceM?: number;
+  navDirection?: 'east' | 'west' | null;
   advancePrompt: string | null;
   playerWorldX: number;
   worldWidth: number;
@@ -1132,6 +1156,16 @@ export interface HudSnapshot {
   bonusObjectiveMet?: boolean;
   perfectDodgesInRun?: number;
   noDamageSoFar?: boolean;
+  investigationTotal?: number;
+  investigationFound?: number;
+  nearbyInvestigation?: { id: string; title: string; kind: InvestigationPoint['kind'] } | null;
+  activeInvestigationDialogue?: {
+    speaker: string;
+    text: string;
+    playerReply?: string;
+    isHorrorReveal?: boolean;
+  } | null;
+  bossAnnouncement?: { name: string; subtitle: string } | null;
 
   survivalWave: number;
   survivalMaxWaves: number;

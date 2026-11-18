@@ -90,6 +90,7 @@ import {
   GameplaySettings,
   HudSnapshot,
   InputState,
+  InvestigationPoint,
   MapId,
   MapZone,
   ScoreBreakdown,
@@ -467,6 +468,15 @@ export class GameEngine {
   private swordUpgrades: SwordUpgrades = { edge: 0, alloy: 0, tsuba: 0, scabbard: 0 };
   private activeTrainingId: string | undefined;
   private activeSecretBossId: string | undefined;
+  private investigationPoints: InvestigationPoint[] = [];
+  private activeInvestigationDialogue: {
+    speaker: string;
+    text: string;
+    playerReply?: string;
+    isHorrorReveal?: boolean;
+  } | null = null;
+  private bossAnnouncement: { name: string; subtitle: string } | null = null;
+  private bossAnnouncementTimer = 0;
 
   // Survival 20-Wave Mode
   private survivalWave = 1;
@@ -579,6 +589,8 @@ export class GameEngine {
     dialogueEnabled: true,
     cameraEffects: true,
     performanceMode: false,
+    hudPreset: 'minimal',
+    controlScale: 1.0,
   };
 
   constructor(canvas: HTMLCanvasElement, callbacks: EngineCallbacks) {
@@ -1057,6 +1069,13 @@ export class GameEngine {
     this.enemyAI.reset();
     this.cloneAI.reset();
     this.resetMatchCounters();
+    this.investigationPoints = this.buildInvestigationPointsForLevel(level);
+    this.activeInvestigationDialogue = null;
+    this.bossAnnouncement =
+      this.isCurrentBossBattle && this.enemyEngaged
+        ? { name: this.enemy.name.split('·')[0].trim(), subtitle: this.enemy.subtitle }
+        : null;
+    this.bossAnnouncementTimer = this.bossAnnouncement ? 2.8 : 0;
     this.cameraX = Math.max(460, playerStartX + 180);
     this.phase = 'PLAYING';
     this.updateZoneTracker();
@@ -1581,6 +1600,11 @@ export class GameEngine {
       return;
     }
 
+    if (this.bossAnnouncementTimer > 0) {
+      this.bossAnnouncementTimer = Math.max(0, this.bossAnnouncementTimer - dt);
+      if (this.bossAnnouncementTimer <= 0) this.bossAnnouncement = null;
+    }
+
     if (this.phase === 'PLAYING') {
       this.matchTime += dt;
       this.updatePlayerController(dt);
@@ -1598,10 +1622,16 @@ export class GameEngine {
         const distToEnemy = Math.abs(this.player.x - this.enemy.x);
         if (!this.enemyEngaged && (distToEnemy <= 920 || this.enemy.hp < this.enemy.maxHp)) {
           this.enemyEngaged = true;
+          this.activeInvestigationDialogue = null;
           if (this.isCurrentBossBattle) {
             this.sound.playBossEntrance();
             this.sound.playDemonLaugh();
             this.triggerDemonSpeech(this.enemy, 'engage');
+            this.bossAnnouncement = {
+              name: this.enemy.name.split('·')[0].trim(),
+              subtitle: this.enemy.subtitle,
+            };
+            this.bossAnnouncementTimer = 2.8;
           } else {
             this.sound.playDemonRoar();
           }
@@ -3449,6 +3479,10 @@ export class GameEngine {
       this.dungeonItems
     );
 
+    if (this.mode === 'STORY' && this.investigationPoints.length > 0) {
+      this.renderInvestigationMarkers(ctx);
+    }
+
     if (this.mode === 'TUTORIAL') {
       renderTrainingRock(ctx, this.rockX, GROUND_Y, this.rockHp, this.rockMaxHp);
     }
@@ -3579,6 +3613,46 @@ export class GameEngine {
     const trainingDef = this.activeTrainingId ? TRAINING_CHALLENGES.find((c) => c.id === this.activeTrainingId) : undefined;
     const secretDef = this.activeSecretBossId ? SECRET_BOSSES.find((s) => s.id === this.activeSecretBossId) : undefined;
 
+    const rawDx = this.enemy.x - this.player.x;
+    const navDistanceM = Math.max(1, Math.round(Math.abs(rawDx) / 40));
+    const navDirection: 'east' | 'west' | null =
+      this.mode === 'STORY' && !this.enemyEngaged && this.enemy.hp > 0
+        ? rawDx >= 0
+          ? 'east'
+          : 'west'
+        : null;
+    const navTargetName =
+      this.mode === 'STORY' && !this.enemyEngaged && this.enemy.hp > 0
+        ? this.enemy.name.split('·')[0].trim()
+        : null;
+
+    const nearbyClue = this.getNearbyInvestigationPoint();
+    const investigationFound = this.investigationPoints.filter((p) => p.discovered).length;
+    const inCombat = this.enemyEngaged && this.enemy.hp > 0 && this.mode !== 'TUTORIAL';
+
+    const chapterNumber = Math.min(10, Math.ceil(this.currentLevel.id / 5));
+    const chapterTitles = [
+      'Shadow of the Night',
+      'Final Selection',
+      'Asakusa Shadows',
+      'Tsuzumi & Natagumo',
+      'Mugen Train',
+      'Entertainment District',
+      'Swordsmith Village',
+      'Hashira Training',
+      'Infinity Castle',
+      'Sunrise Countdown',
+    ];
+    const chapterTitle = chapterTitles[chapterNumber - 1] ?? 'Story Campaign';
+    const objectiveText =
+      this.mode === 'STORY'
+        ? !this.enemyEngaged && this.enemy.hp > 0
+          ? `Track & confront ${this.enemy.name.split('·')[0].trim()}`
+          : `Defeat ${this.enemy.name.split('·')[0].trim()}`
+        : this.mode === 'SURVIVAL'
+          ? `Survive Wave ${this.survivalWave}/${this.survivalMaxWaves}`
+          : 'Defeat the opponent';
+
     this.callbacks.onHudUpdate({
       phase: this.phase,
       mode: this.mode,
@@ -3595,6 +3669,9 @@ export class GameEngine {
                 : this.mode === 'PRACTICE'
                   ? `Free Battle · ${MAP_DISPLAY_NAMES[this.mapId]}`
                   : `Lv.${this.currentLevel.id} · ${this.currentLevel.title}`,
+      chapterNumber,
+      chapterTitle,
+      objectiveText,
       mapId: this.mapId,
       difficultyMode: this.difficultyMode,
       playerName: this.player.name,
@@ -3661,6 +3738,17 @@ export class GameEngine {
       zoneTotal: Math.max(1, this.zones.length),
       zoneName: currentZone?.name ?? MAP_DISPLAY_NAMES[this.mapId],
       advancePrompt,
+      inCombat,
+      navTargetName,
+      navDistanceM,
+      navDirection,
+      investigationTotal: this.investigationPoints.length,
+      investigationFound,
+      nearbyInvestigation: nearbyClue
+        ? { id: nearbyClue.id, title: nearbyClue.title, kind: nearbyClue.kind }
+        : null,
+      activeInvestigationDialogue: this.activeInvestigationDialogue,
+      bossAnnouncement: this.bossAnnouncement,
       playerWorldX: this.player.x,
       worldWidth: this.worldWidth,
       inDarkDungeon,
@@ -3692,6 +3780,138 @@ export class GameEngine {
       matchTime: this.matchTime,
       ragdollHitsLanded: this.ragdollHitsLanded,
     });
+  }
+
+  private buildInvestigationPointsForLevel(level: StoryLevelDef): InvestigationPoint[] {
+    if (this.enemyEngaged) return [];
+    const enemyX = this.enemy.x;
+    const startX = this.player.x;
+    const span = enemyX - startX;
+    if (span < 700) return [];
+
+    const enemyShort = this.enemy.name.split('·')[0].trim();
+    const p1 = Math.round(startX + span * 0.22);
+    const p2 = Math.round(startX + span * 0.48);
+    const p3 = Math.round(startX + span * 0.72);
+
+    return [
+      {
+        id: `inv_${level.id}_1`,
+        x: p1,
+        y: GROUND_Y,
+        kind: 'damaged_house',
+        title: 'Kasugai Crow Report',
+        speaker: 'Kasugai Crow',
+        dialogue: `CAW! ${level.title} — travelers vanished past this ridge. Track the demon scent east!`,
+        playerReply: 'Understood. I will find the survivors and end this.',
+        discovered: false,
+      },
+      {
+        id: `inv_${level.id}_2`,
+        x: p2,
+        y: GROUND_Y,
+        kind: 'broken_sword',
+        title: 'Shattered Nichirin & Marks',
+        speaker: 'Investigation',
+        dialogue: 'Deep claw gouges scar the timber beside a snapped Corps blade. The trail is still fresh.',
+        playerReply: 'A Demon Slayer fought here... The demon is close.',
+        discovered: false,
+      },
+      {
+        id: `inv_${level.id}_3`,
+        x: p3,
+        y: GROUND_Y,
+        kind: 'survivor',
+        title: 'Frightened Survivor & Red Mist',
+        speaker: enemyShort,
+        dialogue: `"Please... stay back! Something hunts here every night..." — A cold crimson shadow shifts ahead: "Another Slayer? You should have stayed away."`,
+        playerReply: 'Your hunting ends tonight.',
+        isHorrorReveal: true,
+        discovered: false,
+      },
+    ];
+  }
+
+  private getNearbyInvestigationPoint(): InvestigationPoint | null {
+    if (this.mode !== 'STORY' || this.enemyEngaged) return null;
+    let best: InvestigationPoint | null = null;
+    let bestDist = 125;
+    for (const pt of this.investigationPoints) {
+      if (pt.discovered) continue;
+      const d = Math.abs(this.player.x - pt.x);
+      if (d <= bestDist) {
+        bestDist = d;
+        best = pt;
+      }
+    }
+    return best;
+  }
+
+  public interactNearbyInvestigation(): void {
+    if (this.activeInvestigationDialogue) {
+      this.dismissInvestigationDialogue();
+      return;
+    }
+    const pt = this.getNearbyInvestigationPoint();
+    if (!pt) return;
+    pt.discovered = true;
+    this.activeInvestigationDialogue = {
+      speaker: pt.speaker,
+      text: pt.dialogue,
+      playerReply: pt.playerReply,
+      isHorrorReveal: pt.isHorrorReveal,
+    };
+    if (pt.isHorrorReveal) {
+      this.sound.playDemonRoar();
+    } else {
+      this.sound.playUpgradeChime();
+    }
+    this.particles.spawnFloatingText(
+      pt.x,
+      GROUND_Y - 82,
+      pt.isHorrorReveal ? 'DEMON PRESENCE!' : 'CLUE FOUND',
+      pt.isHorrorReveal ? '#fb7185' : '#fcd34d',
+      1.0
+    );
+    this.emitHudSnapshot();
+  }
+
+  public dismissInvestigationDialogue(): void {
+    if (!this.activeInvestigationDialogue) return;
+    this.activeInvestigationDialogue = null;
+    this.emitHudSnapshot();
+  }
+
+  private renderInvestigationMarkers(ctx: CanvasRenderingContext2D): void {
+    const t = performance.now() * 0.004;
+    for (const pt of this.investigationPoints) {
+      if (pt.discovered) continue;
+      if (Math.abs(pt.x - this.cameraX) > 1050) continue;
+      const bob = Math.sin(t + pt.x * 0.01) * 5;
+      const isHorror = Boolean(pt.isHorrorReveal);
+      const color = isHorror ? '#fb7185' : '#fbbf24';
+
+      ctx.save();
+      // Ground glow ring
+      const grad = ctx.createRadialGradient(pt.x, GROUND_Y - 4, 2, pt.x, GROUND_Y - 4, 28);
+      grad.addColorStop(0, isHorror ? 'rgba(244,63,94,0.45)' : 'rgba(251,191,36,0.42)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(pt.x, GROUND_Y - 4, 28, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Floating diamond marker
+      const cy = GROUND_Y - 46 + bob;
+      ctx.translate(pt.x, cy);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(-6, -6, 12, 12);
+      ctx.strokeRect(-6, -6, 12, 12);
+      ctx.restore();
+    }
   }
 }
 

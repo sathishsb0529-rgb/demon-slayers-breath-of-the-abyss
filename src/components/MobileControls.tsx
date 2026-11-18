@@ -23,6 +23,7 @@ interface MobileControlsProps {
   engine: GameEngine | null;
   hud: HudSnapshot;
   controlsLayout: TouchControlsLayout;
+  controlScale?: number;
 }
 
 interface TouchButtonProps {
@@ -101,7 +102,7 @@ function TouchButton({
   );
 }
 
-export function MobileControls({ engine, hud, controlsLayout }: MobileControlsProps) {
+export function MobileControls({ engine, hud, controlsLayout, controlScale = 1.0 }: MobileControlsProps) {
   const [viewport, setViewport] = useState(() => ({
     w: typeof window !== 'undefined' ? window.innerWidth : 800,
     h: typeof window !== 'undefined' ? window.innerHeight : 360,
@@ -137,8 +138,14 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
       ? Math.max(0, Math.min(100, (1 - hud.heavyCooldown / hud.maxHeavyCooldown) * 100))
       : 100;
 
+  const safeScale = Math.max(0.8, Math.min(1.25, controlScale));
+  const scaledCfg = (id: keyof TouchControlsLayout) => {
+    const base = controlsLayout[id];
+    return { ...base, scale: Math.max(0.65, Math.min(1.5, base.scale * safeScale)) };
+  };
+
   const boxStyle = (id: keyof TouchControlsLayout): React.CSSProperties => {
-    const rect = getControlPixelRect(id, controlsLayout[id], viewport.w, viewport.h, viewport.insets);
+    const rect = getControlPixelRect(id, scaledCfg(id), viewport.w, viewport.h, viewport.insets);
     return {
       left: `${rect.cx - rect.half}px`,
       top: `${rect.cy - rect.half}px`,
@@ -148,8 +155,8 @@ export function MobileControls({ engine, hud, controlsLayout }: MobileControlsPr
   };
 
   // Anchor compact Page Switcher directly above breathing1..4 cluster
-  const b1Rect = getControlPixelRect('breathing1', controlsLayout.breathing1, viewport.w, viewport.h, viewport.insets);
-  const b4Rect = getControlPixelRect('breathing4', controlsLayout.breathing4, viewport.w, viewport.h, viewport.insets);
+  const b1Rect = getControlPixelRect('breathing1', scaledCfg('breathing1'), viewport.w, viewport.h, viewport.insets);
+  const b4Rect = getControlPixelRect('breathing4', scaledCfg('breathing4'), viewport.w, viewport.h, viewport.insets);
   const pagerLeft = Math.min(b1Rect.cx - b1Rect.half, b4Rect.cx - b4Rect.half);
   const pagerRight = Math.max(b1Rect.cx + b1Rect.half, b4Rect.cx + b4Rect.half);
   const pagerTop = Math.max(54 + viewport.insets.top, Math.min(b1Rect.cy - b1Rect.half, b4Rect.cy - b4Rect.half) - 28);

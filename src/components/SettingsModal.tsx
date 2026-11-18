@@ -172,6 +172,76 @@ export function SettingsModal({
                 <span>Customize Controls</span>
               </button>
             </div>
+
+            {/* Global Touch Control Size Slider */}
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-white">Touch Control Size</p>
+                  <p className="text-xs text-slate-400">
+                    Scale mobile combat buttons without overlapping the battlefield
+                  </p>
+                </div>
+                <span className="font-mono-num tabular-nums text-xs font-bold text-sky-300">
+                  {Math.round((gameplay.controlScale ?? 1) * 100)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0.8}
+                max={1.25}
+                step={0.05}
+                value={gameplay.controlScale ?? 1}
+                onChange={(e) =>
+                  onUpdateGameplay({
+                    ...gameplay,
+                    controlScale: parseFloat(e.target.value),
+                  })
+                }
+                className="mt-2 h-2 w-full cursor-pointer accent-sky-400"
+              />
+            </div>
+
+            {/* HUD Preset Selector */}
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-4 py-3">
+              <div className="mb-2">
+                <p className="text-sm font-semibold text-white">Gameplay HUD Preset</p>
+                <p className="text-xs text-slate-400">
+                  Choose Minimal for maximum battlefield visibility (85%+ clear view)
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { id: 'minimal', label: 'Minimal', hint: 'Max view' },
+                    { id: 'standard', label: 'Standard', hint: 'Balanced' },
+                    { id: 'detailed', label: 'Detailed', hint: 'Full info' },
+                  ] as const
+                ).map((preset) => {
+                  const active = (gameplay.hudPreset ?? 'minimal') === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() =>
+                        onUpdateGameplay({
+                          ...gameplay,
+                          hudPreset: preset.id,
+                        })
+                      }
+                      className={`flex min-h-[44px] flex-col items-center justify-center rounded-lg border px-2 py-1.5 text-xs font-bold transition-colors ${
+                        active
+                          ? 'border-sky-400 bg-sky-500/20 text-sky-200'
+                          : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      <span>{preset.label}</span>
+                      <span className="text-[10px] font-normal text-slate-400">{preset.hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </section>
 
           {/* Visuals, Violence Filter & Performance */}

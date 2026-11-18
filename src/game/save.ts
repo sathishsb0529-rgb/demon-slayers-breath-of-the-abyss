@@ -42,10 +42,21 @@ export const DEFAULT_GAMEPLAY: GameplaySettings = {
   dialogueEnabled: true,
   cameraEffects: true,
   performanceMode: false,
+  hudPreset: 'minimal',
+  controlScale: 1.0,
 };
 
 function sanitizeGameplaySettings(raw?: Partial<GameplaySettings>): GameplaySettings {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_GAMEPLAY };
+  const validPresets: GameplaySettings['hudPreset'][] = ['minimal', 'standard', 'detailed'];
+  const hudPreset =
+    raw.hudPreset && validPresets.includes(raw.hudPreset)
+      ? raw.hudPreset
+      : DEFAULT_GAMEPLAY.hudPreset;
+  const controlScale =
+    typeof raw.controlScale === 'number' && Number.isFinite(raw.controlScale)
+      ? Math.max(0.8, Math.min(1.25, raw.controlScale))
+      : DEFAULT_GAMEPLAY.controlScale;
   return {
     bloodEffectsEnabled: Boolean(raw.bloodEffectsEnabled),
     combatVisualEffects: raw.combatVisualEffects !== undefined ? Boolean(raw.combatVisualEffects) : DEFAULT_GAMEPLAY.combatVisualEffects,
@@ -53,6 +64,8 @@ function sanitizeGameplaySettings(raw?: Partial<GameplaySettings>): GameplaySett
     dialogueEnabled: raw.dialogueEnabled !== undefined ? Boolean(raw.dialogueEnabled) : DEFAULT_GAMEPLAY.dialogueEnabled,
     cameraEffects: raw.cameraEffects !== undefined ? Boolean(raw.cameraEffects) : DEFAULT_GAMEPLAY.cameraEffects,
     performanceMode: Boolean(raw.performanceMode),
+    hudPreset,
+    controlScale,
   };
 }
 

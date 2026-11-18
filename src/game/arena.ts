@@ -1263,9 +1263,18 @@ export class ArenaRenderer {
       ctx.fillRect(p.x, p.y, p.w, p.h);
       ctx.strokeRect(p.x, p.y, p.w, p.h);
 
+      // Crisp top-surface landing bevel so safe footing stands out against dark arenas
+      ctx.fillStyle =
+        p.kind === 'stone'
+          ? 'rgba(226, 232, 240, 0.58)'
+          : p.kind === 'collapsing_bridge' && p.collapseState === 'shaking'
+            ? 'rgba(254, 202, 202, 0.85)'
+            : 'rgba(253, 224, 71, 0.52)';
+      ctx.fillRect(p.x + 1, p.y + 1, Math.max(0, p.w - 2), 3);
+
       if (p.kind === 'bridge' || p.kind === 'collapsing_bridge') {
         // Wooden bridge rails
-        ctx.strokeStyle = p.kind === 'collapsing_bridge' ? '#b45309' : '#92400e';
+        ctx.strokeStyle = p.kind === 'collapsing_bridge' ? '#d97706' : '#b45309';
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(p.x, p.y - 24);
@@ -1280,10 +1289,10 @@ export class ArenaRenderer {
         ctx.fillRect(p.x + 14, p.y + p.h, 10, Math.max(0, GROUND_Y - (p.y + p.h)));
         ctx.fillRect(p.x + p.w - 24, p.y + p.h, 10, Math.max(0, GROUND_Y - (p.y + p.h)));
       } else if (p.kind === 'tatami') {
-        ctx.fillStyle = '#78350f';
-        ctx.fillRect(p.x + 8, p.y + 4, p.w - 16, 4);
+        ctx.fillStyle = '#92400e';
+        ctx.fillRect(p.x + 8, p.y + 5, p.w - 16, 4);
       } else if (p.kind === 'stair') {
-        ctx.fillStyle = '#d97706';
+        ctx.fillStyle = '#f59e0b';
         for (let sx = p.x + 12; sx < p.x + p.w - 20; sx += 26) {
           ctx.fillRect(sx, p.y - 4, 16, 4);
         }
@@ -1309,7 +1318,7 @@ export class ArenaRenderer {
         ctx.fillRect(o.x, o.y, o.w, o.h);
         ctx.strokeRect(o.x, o.y, o.w, o.h);
         // Iron bars + glowing lock crest
-        ctx.strokeStyle = '#64748b';
+        ctx.strokeStyle = '#94a3b8';
         ctx.lineWidth = 2.5;
         for (let bx = o.x + 10; bx < o.x + o.w - 6; bx += 12) {
           ctx.beginPath();
@@ -1323,8 +1332,8 @@ export class ArenaRenderer {
         ctx.fill();
       } else if (o.kind === 'rock') {
         ctx.fillStyle = '#475569';
-        ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(o.x, o.y + o.h);
         ctx.lineTo(o.x + 8, o.y + 10);
@@ -1334,12 +1343,23 @@ export class ArenaRenderer {
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+        // Top rim highlight for clear silhouette
+        ctx.strokeStyle = 'rgba(241, 245, 249, 0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(o.x + 9, o.y + 11);
+        ctx.lineTo(o.x + o.w * 0.55, o.y + 2);
+        ctx.lineTo(o.x + o.w - 6, o.y + 15);
+        ctx.stroke();
       } else if (o.kind === 'crate' || o.kind === 'fence' || o.kind === 'wooden_barrier') {
         ctx.fillStyle = o.kind === 'wooden_barrier' ? '#57280a' : o.kind === 'crate' ? '#78350f' : '#92400e';
-        ctx.strokeStyle = o.kind === 'wooden_barrier' ? '#fbbf24' : '#1c1917';
+        ctx.strokeStyle = o.destructible ? '#f59e0b' : '#d97706';
         ctx.lineWidth = 2;
         ctx.fillRect(o.x, o.y, o.w, o.h);
         ctx.strokeRect(o.x, o.y, o.w, o.h);
+        ctx.fillStyle = 'rgba(253, 224, 71, 0.35)';
+        ctx.fillRect(o.x + 2, o.y + 1, Math.max(0, o.w - 4), 2.5);
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
         ctx.beginPath();
         ctx.moveTo(o.x, o.y);
         ctx.lineTo(o.x + o.w, o.y + o.h);
@@ -1348,18 +1368,20 @@ export class ArenaRenderer {
         ctx.stroke();
       } else if (o.kind === 'shoji_wall') {
         ctx.fillStyle = '#29150b';
-        ctx.strokeStyle = '#f59e0b';
+        ctx.strokeStyle = '#fbbf24';
         ctx.lineWidth = 2;
         ctx.fillRect(o.x, o.y, o.w, o.h);
         ctx.strokeRect(o.x, o.y, o.w, o.h);
-        ctx.fillStyle = 'rgba(253, 224, 71, 0.25)';
+        ctx.fillStyle = 'rgba(253, 224, 71, 0.32)';
         ctx.fillRect(o.x + 6, o.y + 8, o.w - 12, o.h - 16);
       } else {
-        ctx.fillStyle = o.kind === 'pillar' ? '#334155' : '#29180d';
-        ctx.strokeStyle = '#0f172a';
+        ctx.fillStyle = o.kind === 'pillar' ? '#334155' : '#3b2314';
+        ctx.strokeStyle = o.kind === 'pillar' ? '#94a3b8' : '#b45309';
         ctx.lineWidth = 2;
         ctx.fillRect(o.x, o.y, o.w, o.h);
         ctx.strokeRect(o.x, o.y, o.w, o.h);
+        ctx.fillStyle = 'rgba(226, 232, 240, 0.25)';
+        ctx.fillRect(o.x + 2, o.y + 1, Math.max(0, o.w - 4), 2.5);
       }
 
       if (o.destructible && o.hp < o.maxHp) {

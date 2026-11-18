@@ -458,7 +458,33 @@ export function GameOverlays({
           />
           <h2 className="font-display text-2xl font-bold text-white">Battle Paused</h2>
           <p className="mt-1 text-xs text-slate-400">{hud.levelTitle}</p>
-          <div className="mt-5 flex flex-col gap-2.5">
+
+          {hud.mode === 'STORY' && (
+            <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/75 px-3 py-2 text-left text-[11px] text-slate-300">
+              <div className="tabular-nums flex items-center justify-between font-semibold text-sky-300">
+                <span>
+                  Chapter {hud.chapterNumber ?? Math.max(1, Math.ceil((hud.levelId || 1) / 10))} · Lv.{hud.levelId}
+                </span>
+                <span>
+                  Zone {hud.zoneIndex}/{hud.zoneTotal}
+                </span>
+              </div>
+              <div className="mt-0.5 text-slate-400">{hud.zoneName}</div>
+              {hud.objectiveText && (
+                <div className="mt-1 font-medium text-slate-200">Objective: {hud.objectiveText}</div>
+              )}
+              {hud.navTargetName && (
+                <div className="tabular-nums mt-1 text-amber-200">
+                  Navigation: {hud.navTargetName}
+                  {typeof hud.navDistanceM === 'number' && hud.navDistanceM > 0
+                    ? ` (${hud.navDistanceM}m ${hud.navDirection === 'west' ? 'West' : 'East'})`
+                    : ''}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-col gap-2.5">
             <button
               type="button"
               onClick={onResume}
